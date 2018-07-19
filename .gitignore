@@ -1,2 +1,2 @@
-build.sh
-env.sh
+build/*
+.vscode/*

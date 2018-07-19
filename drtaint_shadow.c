@@ -70,6 +70,12 @@ drtaint_shadow_exit(void)
 bool
 drtaint_shadow_insert_app_to_shadow(void *drcontext, instrlist_t *ilist, instr_t *where,
                                     reg_id_t regaddr, reg_id_t scratch)
+/*
+    Save original application address in %regaddr% to SPILL_SLOT_2 
+    and translate value of %regaddr% to its shadow address
+
+    out <- %regaddr% - address of register where the value is/will be stored
+*/
 {
     /* XXX: we shouldn't have to do this */
     /* Save the app address to a well-known spill slot, so that the fault handler
@@ -84,6 +90,10 @@ drtaint_shadow_insert_app_to_shadow(void *drcontext, instrlist_t *ilist, instr_t
 
 bool
 drtaint_shadow_get_app_taint(void *drcontext, app_pc app, byte *result)
+/*
+    Read shadow value at address %app_pc% and store it to %result%
+    Note: 1 real memory byte = 4 shadow memory bytes
+*/
 {
     size_t sz = 1;
     bool ret = umbra_read_shadow_memory(umbra_map, app, 4,
@@ -91,8 +101,13 @@ drtaint_shadow_get_app_taint(void *drcontext, app_pc app, byte *result)
     return ret;
 }
 
+//+
 bool
 drtaint_shadow_set_app_taint(void *drcontext, app_pc app, byte result)
+/*
+    Translate address of %app_pc% to shadow address and write there %result% value
+    Note: 1 real memory byte = 4 shadow memory bytes
+*/
 {
     size_t sz = 1;
     bool ret = umbra_write_shadow_memory(umbra_map, app, 4,
@@ -199,6 +214,7 @@ event_signal_instrumentation(void *drcontext, dr_siginfo_t *info)
 {
     if (info->sig != SIGSEGV && info->sig != SIGBUS)
         return DR_SIGNAL_DELIVER;
+
     DR_ASSERT(info->raw_mcontext_valid);
     return handle_special_shadow_fault(drcontext, info->raw_mcontext,
                                        info->access_address) ?
@@ -214,6 +230,7 @@ drtaint_shadow_reg_init(void)
     drmgr_priority_t exit_priority = {
         sizeof(exit_priority), DRMGR_PRIORITY_NAME_DRTAINT_EXIT, NULL, NULL,
         DRMGR_PRIORITY_THREAD_EXIT_DRTAINT};
+
     drmgr_priority_t init_priority = {
         sizeof(init_priority), DRMGR_PRIORITY_NAME_DRTAINT_INIT, NULL, NULL,
         DRMGR_PRIORITY_THREAD_INIT_DRTAINT};
@@ -229,43 +246,72 @@ drtaint_shadow_reg_init(void)
     return true;
 }
 
+// +
 bool
 drtaint_shadow_insert_reg_to_shadow(void *drcontext, instrlist_t *ilist, instr_t *where,
                                     reg_id_t shadow,  reg_id_t regaddr)
+/*
+    Inserts instructions to gain shadow %shadow% register's address 
+    of the current thread and place result to register of %regaddr% 
+
+    %reg% = value of register situated at %regaddr%
+*/
 {
     unsigned int offs = offsetof(per_thread_t, shadow_gprs[shadow - DR_REG_R0]);
     DR_ASSERT(shadow - DR_REG_R0 < DR_NUM_GPR_REGS);
+
     /* Load the per_thread data structure holding the thread-local taint
      * values of each register.
-     */
+    */
+    
+    // per_thread_t* -> reg
     drmgr_insert_read_tls_field(drcontext, tls_index, ilist, where, regaddr);
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_add
+    
+    // out <- reg = &shadow_gprs[offs]
+    instrlist_meta_preinsert(ilist, where, XINST_CREATE_add // reg = reg + offs
                              (drcontext,
-                              opnd_create_reg(regaddr),
-                              OPND_CREATE_INT8(offs)));
+                              opnd_create_reg(regaddr) ,    // dst reg:  get register value from regaddr
+                              OPND_CREATE_INT8(offs)));     // src offs: get byte constant
     return true;
 }
 
+// +
 bool
 drtaint_shadow_insert_reg_to_shadow_load(void *drcontext, instrlist_t *ilist,
                                          instr_t *where, reg_id_t shadow,
                                          reg_id_t regaddr)
+/*
+    Inserts instructions to gain shadow %shadow% register's value 
+    of the current thread and place result to register of %regaddr% 
+
+    %reg% = value of register situated at %regaddr%
+*/
 {
     unsigned int offs = offsetof(per_thread_t, shadow_gprs[shadow - DR_REG_R0]);
     DR_ASSERT(shadow - DR_REG_R0 < DR_NUM_GPR_REGS);
+
     /* Load the per_thread data structure holding the thread-local taint
      * values of each register.
-     */
+    */
+
+    // per_thread_t* -> reg
     drmgr_insert_read_tls_field(drcontext, tls_index, ilist, where, regaddr);
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte
+
+    // out <- reg = shadow_gprs[offs]    
+    instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte  // ldr reg, [byte]
                              (drcontext,
-                              opnd_create_reg(regaddr),
-                              OPND_CREATE_MEM8(regaddr, offs)));
+                              opnd_create_reg(regaddr),             // dst reg
+                              OPND_CREATE_MEM8(regaddr, offs)));    // src byte: reg + offs
+
     return true;
 }
 
+// +
 bool
 drtaint_shadow_get_reg_taint(void *drcontext, reg_id_t reg, byte *result)
+/*
+    Get the value of shadow register %reg% and store it in %result%
+*/
 {
     per_thread_t *data = drmgr_get_tls_field(drcontext, tls_index);
     if (reg - DR_REG_R0 >= DR_NUM_GPR_REGS)
@@ -274,8 +320,12 @@ drtaint_shadow_get_reg_taint(void *drcontext, reg_id_t reg, byte *result)
     return true;
 }
 
+// +
 bool
 drtaint_shadow_set_reg_taint(void *drcontext, reg_id_t reg, byte value)
+/*
+    Set the value of shadow register %reg% to value %value%
+*/
 {
     per_thread_t *data = drmgr_get_tls_field(drcontext, tls_index);
     if (reg - DR_REG_R0 >= DR_NUM_GPR_REGS)
