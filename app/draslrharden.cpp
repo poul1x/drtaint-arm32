@@ -86,6 +86,7 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     drmgr_priority_t pri = { sizeof(pri), "drtaint.pc",
                              DRMGR_PRIORITY_NAME_DRTAINT, NULL,
                              DRMGR_PRIORITY_INSERT_DRTAINT };
+
     drmgr_register_bb_instrumentation_event(NULL,
                                             event_app_instruction_pc,
                                             &pri);
@@ -147,7 +148,7 @@ event_app_instruction_start(void *drcontext, void *tag, instrlist_t *bb, instr_t
     if (!user_data ||
         !drmgr_is_first_instr(drcontext, instr))
         return DR_EMIT_DEFAULT;
-
+        
     /* Emit the following instrumentation:
      * ldr r0, [sp]
      * add r1, sp, #4
@@ -155,6 +156,7 @@ event_app_instruction_start(void *drcontext, void *tag, instrlist_t *bb, instr_t
      * add r2, 4
      * call clean_call
      */
+
     auto argc = drreg_reservation { bb, instr };
     auto argv = drreg_reservation { bb, instr };
     auto envp = drreg_reservation { bb, instr };

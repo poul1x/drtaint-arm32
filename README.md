@@ -29,3 +29,32 @@ CFLAGS=-march=armv7 -mfloat-abi=soft
 
 For some reason, this doesn't get rid of *all* fpu/neon instructions (to my knowledge) but
 gets rid of almost all of them.
+
+
+# Launch
+
+once before launching:
+ 
+current variables:
+
+	export LD_LIBRARY_PATH=/home/debian/drbuild/drmemory-armhf/exports32/drmf/lib32/release
+	export APP_PATH=/home/debian/drtaint/tests/build/drtaint_test
+	export LIB_PATH=/home/debian/drtaint/build/libdrtaint_test.so
+	export DRIO_PATH=/home/debian/drbuild/dynamorio-armhf/exports/bin32
+
+variants:
+
+	ls /home/debian/drtaint/tests/build
+	export APP_PATH=/home/debian/drtaint/tests/build*
+
+	ls /home/debian/drtaint/build/
+	export LIB_PATH=/home/debian/drtaint/build/*
+
+
+without debugging -> do:
+	
+	$DRIO_PATH/drrun -c $LIB_PATH -- ls
+
+-------------
+
+	$DRIO_PATH/drrun -c $LIB_PATH -- $APP_PATH

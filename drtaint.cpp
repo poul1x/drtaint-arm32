@@ -1479,7 +1479,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 static bool
 drsys_iter_cb(drsys_arg_t *arg, void *drcontext)
 /*
-    Set taint syscall output parameters
+    Set syscall output parameters untainted 
 */
 {
     if (!arg->valid)
