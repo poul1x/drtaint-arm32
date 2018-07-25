@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.0)
 project (drtaint)
 
-set(DynamoRIO_DIR         /home/debian/drbuild/dynamorio-armhf/exports/cmake/)
+set(DynamoRIO_DIR         /home/debian/drbuild/dynamorio-armhf/release/cmake/)
 set(DrMemoryFramework_DIR /home/debian/drbuild/drmemory-armhf/exports32/drmf/)
 set(CMAKE_CXX_STANDARD 11)
 
@@ -22,6 +22,7 @@ add_library(drtaint_test SHARED
 
 app/drtaint_test.cpp
 drtaint.cpp
+drtaint_simd.cpp
 drtaint_shadow.c
 drtaint_helper.cpp)
 

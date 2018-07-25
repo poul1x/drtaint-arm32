@@ -126,14 +126,18 @@ handle_start_trace(void *drcontext)
     // taint buffer
     for (int i = 0; i < len; ++i)
     {
-        DR_ASSERT_MSG(
-            drtaint_set_app_taint(drcontext, (app_pc)&buffer[i], TAINT_TAG),
-            "Unable to set app tainted");
+        if (!drtaint_set_app_taint(drcontext, (app_pc)&buffer[i], TAINT_TAG))
+        {
+            dr_printf("Unable to set app tainted");
+            set_syscall_retval(drcontext, false);
+            return false;
+        }
 
         dr_printf("%c", buffer[i]);
     }
 
     dr_printf("\n\n");
+    set_syscall_retval(drcontext, true);
     return false;
 }
 
@@ -177,11 +181,14 @@ handle_start_trace(void *drcontext)
     // taint buffer
     for (int i = 0; i < len; ++i)
     {
-        DR_ASSERT_MSG(
-            drtaint_set_app_taint(drcontext, (app_pc)&buffer[i], TAINT_TAG),
-            "Unable to set app tainted");
+        if (!drtaint_set_app_taint(drcontext, (app_pc)&buffer[i], TAINT_TAG))
+        {
+            set_syscall_retval(drcontext, false);
+            return false;
+        }
     }
 
+    set_syscall_retval(drcontext, true);
     return false;
 }
 
