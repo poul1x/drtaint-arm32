@@ -43,6 +43,18 @@ drtaint_get_app_taint(void *drcontext, app_pc app, byte *result);
 bool
 drtaint_set_app_taint(void *drcontext, app_pc app, byte result);
 
+void
+drtaint_save_instr(void *drcontext, int opcode);
+
+int
+drtaint_get_prev_instr(void *drcontext);
+
+void
+drtaint_update_cpsr(void *drcontext, uint new_flags);
+
+uint
+drtaint_get_cpsr(void *drcontext);
+
 #ifdef __cplusplus
 }
 #endif

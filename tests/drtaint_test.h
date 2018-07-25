@@ -30,7 +30,7 @@ bool test_simple();
 
 bool test_assign();
 
-bool test_arifm();
+bool test_arith();
 
 bool test_bitwise();
 
@@ -41,3 +41,7 @@ bool test_assign_ex();
 bool test_struct();
 
 bool test_func_call();
+
+bool test_cmp();
+
+bool test_array();
