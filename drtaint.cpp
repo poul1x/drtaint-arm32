@@ -144,7 +144,8 @@ propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
     ldr reg1, [mem2]
 
-    We need to save the value that will be placed to reg1 to its shadow register
+    We need to save the tag value stored at
+    [mem2] shadow address to shadow register of reg1
 */
 {
     auto sreg1 = drreg_reservation{ilist, where};
@@ -173,11 +174,56 @@ propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 }
 
 static void
+propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
+/*
+    ldrd reg1, reg2, [mem2]
+
+    We need to save the tag value stored at
+    [mem2] shadow address to shadow registers reg1, reg2
+*/
+{
+    auto sreg1 = drreg_reservation{ilist, where};
+    auto sapp2 = drreg_reservation{ilist, where};
+
+    reg_id_t reg1 = opnd_get_reg(instr_get_dst(where, 0));
+    reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 1));
+    opnd_t mem2 = instr_get_src(where, 0);
+
+    // dereference the memory address at mem2 and store the result to %sapp2% register
+    drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
+
+    // get shadow memory addresses of reg1 and [mem2] and place them to %sreg1% and %sapp2%
+    drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
+    drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
+
+    // place to %sapp2% the value placed at address [mem2]
+    instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2, [sapp2]
+                             (drcontext,
+                              opnd_create_reg(sapp2),       // dst: sapp2
+                              OPND_CREATE_MEM8(sapp2, 0))); // src: sapp2
+
+    // save the value of %sapp2% to shadow register of reg1
+    instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sapp2, [sreg1]
+                                 (drcontext, OPND_CREATE_MEM8(sreg1, 0), // dst_mem: sreg1
+                                  opnd_create_reg(sapp2)));              // src_reg: sapp2
+
+    // get shadow memory address of reg2 and place it to %sreg1% 
+    drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg1);
+    
+    // save the value of %sapp2% to shadow register of reg2
+    instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sapp2, [sreg1]
+                                 (drcontext, OPND_CREATE_MEM8(sreg1, 0), // dst_mem: sreg1
+                                  opnd_create_reg(sapp2)));              // src_reg: sapp2
+
+}
+
+static void
 propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
     str reg1, [mem2]  
 
-    We need to save the value that will be placed to [mem2] to its shadow memory
+    We need to save the tag value stored in 
+    shadow register of reg1 to shadow address of [mem2] 
 */
 {
     auto sreg1 = drreg_reservation{ilist, where};
@@ -207,7 +253,8 @@ propagate_mov_regs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
 /*
     mov reg2, reg1
 
-    Need to save the value that will be placed to reg2
+    Need to save the tag value of reg1's 
+    shadow register to reg2's shadow register
 */
 {
     auto sreg2 = drreg_reservation{ilist, where};
@@ -239,7 +286,8 @@ propagate_mov_imm_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 /*
     mov reg2, imm1
 
-    Need to save the value of immediate constant that will be placed to reg2
+    Saves the value of 0 to the shadow register 
+    of reg2 because moving constant to reg2 untaints reg2
 */
 {
     auto sreg2 = drreg_reservation{ilist, where};
@@ -250,10 +298,10 @@ propagate_mov_imm_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
 
     // place constant imm to register %simm2%
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_move // mov simm2, imm
+    instrlist_meta_preinsert(ilist, where, XINST_CREATE_move // mov simm2, 0
                              (drcontext,
                               opnd_create_reg(simm2),             // dst: simm2
-                              opnd_create_immed_int(0, OPSZ_1))); // src: imm
+                              opnd_create_immed_int(0, OPSZ_1))); // src: 0
 
     // move to shadow register of reg2 the value of imm1
     instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte  // str simm2, [sreg2]
@@ -464,7 +512,6 @@ calculate_addr<IA>(instr_t *instr, void *base, int i, int top)
     return (app_pc)base + 4 * i;
 }
 
-/* XXX: these are probably not correct */
 template <>
 app_pc
 calculate_addr<DA>(instr_t *instr, void *base, int i, int top)
@@ -492,14 +539,14 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
     instr_t *instr = instr_create(drcontext);
 
     decode(drcontext, (byte *)pc, instr);
+    int num_dsts = instr_num_dsts(instr);
 
-    for (int i = 0; i < instr_num_dsts(instr); ++i)
+    for (int i = 0; i < num_dsts; ++i)
     {
         bool ok;
 
         // ? why 1 instead of 0
-        // when executing assembler commands in 16bit thumb mode
-        // (writeback = true) the register r must not to be in {regs} list
+        // ? why do we need this
         if (writeback &&
             (opnd_get_reg(instr_get_dst(instr, i)) ==
              opnd_get_reg(instr_get_src(instr, 1))))
@@ -507,9 +554,7 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
 
         // set taint from stack to the appropriate register
         byte res;
-        int top = writeback ? instr_num_dsts(instr) : instr_num_dsts(instr) - 1;
-
-        ok = drtaint_get_app_taint(drcontext, calculate_addr<c>(instr, base, i, top), &res);
+        ok = drtaint_get_app_taint(drcontext, calculate_addr<c>(instr, base, i, num_dsts), &res);
         DR_ASSERT(ok);
         ok = drtaint_set_reg_taint(drcontext, opnd_get_reg(instr_get_dst(instr, i)), res);
         DR_ASSERT(ok);
@@ -536,8 +581,8 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
     {
         bool ok;
 
-        // when executing assembler commands in 16bit thumb mode
-        // (writeback = true) the register r must not to be in {regs} list
+        // ? why 1 instead of 0
+        // ? why do we need this
         if (writeback &&
             (opnd_get_reg(instr_get_src(instr, i)) ==
              opnd_get_reg(instr_get_dst(instr, 1))))
@@ -568,7 +613,7 @@ instr_handle_constant_func(void *drcontext, void *tag, instrlist_t *ilist, instr
         opcode == OP_sbc ||
         opcode == OP_sbcs)
     {
-        /* xor r1, r0, r0 */
+        // xor r1, r0, r0 causes r1 to be untainted
         if (!opnd_is_reg(instr_get_src(where, 0)))
             return false;
 
@@ -579,7 +624,7 @@ instr_handle_constant_func(void *drcontext, void *tag, instrlist_t *ilist, instr
             opnd_get_reg(instr_get_src(where, 1)))
             return false;
 
-        /*mov r1, imm */
+        // mov r1, imm
         propagate_mov_imm_src(drcontext, tag, ilist, where);
         return true;
     }
@@ -713,12 +758,29 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 
     case OP_ldr:
     case OP_ldrb:
-    case OP_ldrd:
     case OP_ldrh:
     case OP_ldrsh:
     case OP_ldrsb:
+    
+    // exclusive ldr
     case OP_ldrex:
+    case OP_ldrexb:
+    case OP_ldrexh:
+    
+    // thumb mode
+    case OP_ldrt:
+    case OP_ldrbt:
+    case OP_ldrht:
+    case OP_ldrsbt:
+    case OP_ldrsht:
+
         propagate_ldr(drcontext, tag, ilist, where);
+        break;
+
+    case OP_ldrd:
+    case OP_ldrexd:
+
+        propagate_ldrd(drcontext, tag, ilist, where);
         break;
 
     case OP_str:
@@ -726,6 +788,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_strd:
     case OP_strh:
     case OP_strex:
+
         /* For OP_strex, failure is written to a second dst operand,
          * but this isn't controllable.
          */
@@ -740,6 +803,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_movs:
     case OP_rrx:
     case OP_rrxs:
+
         if (opnd_is_reg(instr_get_src(where, 0)))
             propagate_mov_reg_src(drcontext, tag, ilist, where);
         else
@@ -754,6 +818,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_sxth:
     case OP_rev:
     case OP_rev16:
+
         /* These aren't mov's per se, but they only accept 1
          * reg source and 1 reg dest.
          */
@@ -762,6 +827,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 
     case OP_sel:
     case OP_clz:
+
         /* These aren't mov's per se, but they only accept 1
          * reg source and 1 dest.
          */
@@ -804,9 +870,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_orn:
     case OP_uadd8:
     case OP_uqsub8:
-        /* Some of these also write to eflags. If we taint eflags
-         * we should do it here.
-         */
+
         DR_ASSERT(instr_num_srcs(where) == 2 || instr_num_srcs(where) == 4);
         DR_ASSERT(instr_num_dsts(where) == 1);
         if (opnd_is_reg(instr_get_src(where, 0)))
@@ -852,36 +916,6 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         /* we don't have to do anything for immediates */
         break;
 
-    case OP_cbz:
-    case OP_cbnz:
-        /* Nothing to do here, unless we want to support tainting
-         * eflags.
-         */
-        break;
-    case OP_cmn:
-    case OP_cmp:
-    case OP_tst:
-    case OP_it:
-        /* Nothing to do here, unless we want to support tainting
-         * eflags.
-         */
-        break;
-
-    case OP_LABEL:
-    case OP_svc:
-    case OP_ldc:
-    case OP_mcr:
-    case OP_mrc:
-    case OP_nop:
-    case OP_pld:
-    case OP_dmb:
-        break;
-
-    case OP_bfi:
-    case OP_bfc:
-    case OP_teq:
-        break;
-
     default:
         unimplemented_opcode(where);
         break;
@@ -893,7 +927,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 /* ======================================================================================
  * system call clearing and handling routines
  * ==================================================================================== */
-// ?
+
 static bool
 drsys_iter_cb(drsys_arg_t *arg, void *drcontext)
 /*
@@ -961,12 +995,42 @@ instr_affects_on_flags(int opcode)
 {
     switch (opcode)
     {
-    case OP_adds:
-    case OP_movs:
+    // these four instruction always update flags
     case OP_cmp:
     case OP_cmn:
     case OP_tst:
     case OP_teq:
+    
+    // other instructions must have {S} suffix
+    case OP_adcs:
+    case OP_adds:
+    case OP_ands:
+    case OP_asrs:
+    case OP_bics:
+    case OP_eors:
+    case OP_lsls:
+    case OP_lsrs:
+    case OP_mlas:
+    case OP_mls:
+    case OP_movs:
+    case OP_muls:
+    case OP_mvns:
+    case OP_orns:
+    case OP_orrs:
+    case OP_rors:
+    case OP_rrxs:
+    case OP_rsbs:
+    case OP_rscs:
+    case OP_msr:    // writes to cspr directly
+    case OP_sbcs:
+    case OP_subs:
+
+    case OP_smlals:
+    case OP_smmls:
+    case OP_smulls:
+    case OP_umlals:
+    case OP_umulls:
+
         return true;
     }
 
@@ -1009,12 +1073,13 @@ instr_predicate_is_true(instr_t *where, uint cspr)
         return DRT_TEST_FLAG_UP(cspr, EFLAGS_Z) || DRT_TEST_FLAG_DOWN(cspr, EFLAGS_C);
 
     case DR_PRED_GE: //+
-        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) || DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N | EFLAGS_V);
+        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) ||
+               DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N | EFLAGS_V);
 
     case DR_PRED_LT: //+
         return DRT_TEST_FLAG_UP(cspr, EFLAGS_N) && DRT_TEST_FLAG_DOWN(cspr, EFLAGS_V) ||
-
                DRT_TEST_FLAG_DOWN(cspr, EFLAGS_N) && DRT_TEST_FLAG_UP(cspr, EFLAGS_V);
+
     case DR_PRED_GT: //+
         return (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) && DRT_TEST_FLAG_DOWN(cspr, EFLAGS_Z)) ||
                DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N | EFLAGS_V | EFLAGS_Z);

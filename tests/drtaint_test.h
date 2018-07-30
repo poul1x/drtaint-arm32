@@ -42,6 +42,14 @@ bool test_struct();
 
 bool test_func_call();
 
-bool test_cmp();
-
 bool test_array();
+
+bool test_untaint();
+
+bool test_asm_check_ldrd();
+
+bool test_asm_check_ldr();
+
+bool test_asm_check_ldm()
+
+bool test_asm();

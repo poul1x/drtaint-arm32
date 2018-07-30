@@ -39,9 +39,13 @@ std::map<std::string, testfunc> gTestfunc_table = {
     {"struct", test_struct},
     {"func_call", test_func_call},
     {"array", test_array},
-    {"cmp", test_cmp},
     {"condex_op", test_condex_op},
     {"assign_ex", test_assign_ex},
+    {"untaint", test_untaint},
+    {"ldr", test_asm_check_ldr},
+    {"ldrd", test_asm_check_ldrd},
+    {"ldm", test_asm_check_ldm},
+    {"asm", test_asm},
 
 };
 
@@ -299,11 +303,10 @@ bool test_struct()
     return true;
 }
 
-bool
-test_array()
+bool test_array()
 {
     char src1[] = "~DrTaint~";
-    char* dst1 = new char[sizeof(src1)];
+    char *dst1 = new char[sizeof(src1)];
     char dst2[sizeof(src1)];
 
     MAKE_TAINTED(src1, sizeof(src1));
@@ -316,7 +319,7 @@ test_array()
     TEST_ASSSERT(b);
     TEST_ASSSERT(IS_TAINTED(dst2, sizeof(src1)));
 
-    int C[2] = {1,2};
+    int C[2] = {1, 2};
     int D[2] = {0};
 
     MAKE_TAINTED(&C[0], sizeof(int));
@@ -325,18 +328,18 @@ test_array()
     TEST_ASSSERT(IS_TAINTED(&D[1], sizeof(int)));
     TEST_ASSSERT(!IS_TAINTED(&D[0], sizeof(int)));
 
-    int A[2][2] = {{1,2},{3,4}};
+    int A[2][2] = {{1, 2}, {3, 4}};
     int B[2][2] = {0};
 
     MAKE_TAINTED(&A[1][1], sizeof(int));
     B[0][0] = A[1][1];
     B[0][1] = A[1][1];
-    
+
     TEST_ASSSERT(IS_TAINTED(&B[0][0], sizeof(int)));
     TEST_ASSSERT(IS_TAINTED(&B[0][1], sizeof(int)));
     TEST_ASSSERT(!IS_TAINTED(&B[1][1], sizeof(int)));
     TEST_ASSSERT(!IS_TAINTED(&B[1][0], sizeof(int)));
-    
+
     return true;
 }
 
@@ -354,164 +357,6 @@ bool test_func_call()
     TEST_ASSSERT(IS_TAINTED(&y, sizeof(int)));
     return true;
 }
-
-#define CMP_PART_CODE_TYPE1(type)                        \
-    type t1 = 1, t2 = 2, t3 = 3, t4 = 4, t5 = 5, t6 = 6; \
-    type x1 = 2, x2 = 1, x3 = 4, x4 = 3, x5 = 3, x6 = 0; \
-    type y1 = 1, y2 = 2, y3 = 3, y4 = 4, y5 = 4, y6 = 0; \
-    type z1, z2, z3, z4, z5, z6;                         \
-    MAKE_TAINTED(&t1, sizeof(type));                     \
-    MAKE_TAINTED(&t2, sizeof(type));                     \
-    MAKE_TAINTED(&t3, sizeof(type));                     \
-    MAKE_TAINTED(&t4, sizeof(type));                     \
-    MAKE_TAINTED(&t5, sizeof(type));                     \
-    MAKE_TAINTED(&t6, sizeof(type));                     \
-                                                         \
-    if (x1 < y1)                                         \
-        z1 = 0;                                          \
-    else                                                 \
-        z1 = t1;                                         \
-                                                         \
-    if (x2 > y2)                                         \
-        z2 = 0;                                          \
-    else                                                 \
-        z2 = t2;                                         \
-                                                         \
-    if (x3 <= y3)                                        \
-        z3 = 0;                                          \
-    else                                                 \
-        z3 = t3;                                         \
-                                                         \
-    if (x4 >= y4)                                        \
-        z4 = 0;                                          \
-    else                                                 \
-        z4 = t4;                                         \
-                                                         \
-    if (x5 == y5)                                        \
-        z5 = 0;                                          \
-    else                                                 \
-        z5 = t5;                                         \
-                                                         \
-    if (x6 != y6)                                        \
-        z6 = 0;                                          \
-    else                                                 \
-        z6 = t6;                                         \
-                                                         \
-    TEST_ASSSERT(IS_TAINTED(&z1, sizeof(type)));         \
-    TEST_ASSSERT(IS_TAINTED(&z2, sizeof(type)));         \
-    TEST_ASSSERT(IS_TAINTED(&z3, sizeof(type)));         \
-    TEST_ASSSERT(IS_TAINTED(&z4, sizeof(type)));         \
-    TEST_ASSSERT(IS_TAINTED(&z5, sizeof(type)));         \
-    TEST_ASSSERT(IS_TAINTED(&z6, sizeof(type)));         \
-                                                         \
-    return true
-
-#define CMP_PART_CODE_TYPE2(type)                                            \
-    type t1 = 1, t2 = 2, t3 = 3, t3_2 = 3, t4 = 4, t4_2 = 4, t5 = 5, t6 = 6; \
-    type x1 = 1, x2 = 2, x3 = 3, x3_2 = 4, x4 = 4, x4_2 = 3, x5 = 3, x6 = 0; \
-    type y1 = 2, y2 = 1, y3 = 4, y3_2 = 4, y4 = 3, y4_2 = 3, y5 = 3, y6 = 1; \
-    type z1, z2, z3, z3_2, z4, z4_2, z5, z6;                                 \
-    MAKE_TAINTED(&t1, sizeof(type));                                         \
-    MAKE_TAINTED(&t2, sizeof(type));                                         \
-    MAKE_TAINTED(&t3, sizeof(type));                                         \
-    MAKE_TAINTED(&t3_2, sizeof(type));                                       \
-    MAKE_TAINTED(&t4, sizeof(type));                                         \
-    MAKE_TAINTED(&t4_2, sizeof(type));                                       \
-    MAKE_TAINTED(&t5, sizeof(type));                                         \
-    MAKE_TAINTED(&t6, sizeof(type));                                         \
-                                                                             \
-    if (x1 < y1)                                                             \
-        z1 = t1;                                                             \
-    else                                                                     \
-        z1 = 0;                                                              \
-                                                                             \
-    if (x2 > y2)                                                             \
-        z2 = t2;                                                             \
-    else                                                                     \
-        z2 = 0;                                                              \
-                                                                             \
-    if (x3 <= y3)                                                            \
-        z3 = t3;                                                             \
-    else                                                                     \
-        z3 = 0;                                                              \
-                                                                             \
-    if (x3_2 <= y3_2)                                                        \
-        z3_2 = t3_2;                                                         \
-    else                                                                     \
-        z3_2 = 0;                                                            \
-                                                                             \
-    if (x4 >= y4)                                                            \
-        z4 = t4;                                                             \
-    else                                                                     \
-        z4 = 0;                                                              \
-                                                                             \
-    if (x4_2 >= y4_2)                                                        \
-        z4_2 = t4_2;                                                         \
-    else                                                                     \
-        z4_2 = 0;                                                            \
-                                                                             \
-    if (x5 == y5)                                                            \
-        z5 = t5;                                                             \
-    else                                                                     \
-        z5 = 0;                                                              \
-                                                                             \
-    if (x6 != y6)                                                            \
-        z6 = t6;                                                             \
-    else                                                                     \
-        z6 = 0;                                                              \
-                                                                             \
-    TEST_ASSSERT(IS_TAINTED(&z1, sizeof(type)));                             \
-    TEST_ASSSERT(IS_TAINTED(&z2, sizeof(type)));                             \
-    TEST_ASSSERT(IS_TAINTED(&z3, sizeof(type)));                             \
-    TEST_ASSSERT(IS_TAINTED(&z3_2, sizeof(type)));                           \
-    TEST_ASSSERT(IS_TAINTED(&z4, sizeof(type)));                             \
-    TEST_ASSSERT(IS_TAINTED(&z4_2, sizeof(type)));                           \
-    TEST_ASSSERT(IS_TAINTED(&z5, sizeof(type)));                             \
-    TEST_ASSSERT(IS_TAINTED(&z6, sizeof(type)));                             \
-                                                                             \
-    return true
-
-static bool first_part()
-{
-    CMP_PART_CODE_TYPE1(int);
-}
-
-static bool second_part()
-{
-    CMP_PART_CODE_TYPE1(unsigned);
-}
-
-static bool third_part()
-{
-    CMP_PART_CODE_TYPE2(int);
-}
-
-static bool fourth_part()
-{
-    CMP_PART_CODE_TYPE2(unsigned);
-}
-
-bool test_cmp()
-/*
-    Test comparison operations
-*/
-{
-    printf("Running first part signed\n");
-    TEST_ASSSERT(first_part());
-
-    printf("Running first part unsigned\n");
-    TEST_ASSSERT(second_part());
-
-    printf("Running second part signed\n");
-    TEST_ASSSERT(third_part());
-
-    printf("Running second part unsigned\n");
-    TEST_ASSSERT(fourth_part());
-    return true;
-}
-
-#undef CMP_PART_CODE_TYPE1
-#undef CMP_PART_CODE_TYPE2
 
 bool test_condex_op()
 /*
@@ -535,6 +380,214 @@ bool test_condex_op()
 
     x4 = y % z;
     TEST_ASSSERT(IS_TAINTED(&x4, sizeof(int)));
+
+    return true;
+}
+
+#define TEST_XOR_REG_REG(asm_command)               \
+    printf("TEST_XOR_REG_REG: " #asm_command "\n"); \
+    x1 = 80;                                        \
+    x2 = 508;                                       \
+    MAKE_TAINTED(&x2, sizeof(int));                 \
+                                                    \
+    asm(#asm_command " %0, %1, %1;"                 \
+        : "=r"(x1)                                  \
+        : "r"(x2));                                 \
+                                                    \
+    TEST_ASSSERT(!IS_TAINTED(&x1, sizeof(int)))
+
+bool test_untaint()
+{
+    // when assigning a value to k with mov r, imm
+    // we untaint it, commands [eor | sub | ..] r1, r0, r0
+    // are equivalent to mov r, imm
+
+    int k = 8;
+    TEST_ASSSERT(!IS_TAINTED(&k, sizeof(int)));
+
+    MAKE_TAINTED(&k, sizeof(int));
+    TEST_ASSSERT(IS_TAINTED(&k, sizeof(int)));
+
+    k = 8;
+    TEST_ASSSERT(!IS_TAINTED(&k, sizeof(int)));
+
+    int x1, x2;
+    TEST_XOR_REG_REG(eor);
+    TEST_XOR_REG_REG(eors);
+    TEST_XOR_REG_REG(sub);
+    TEST_XOR_REG_REG(subs);
+    TEST_XOR_REG_REG(sbc);
+    TEST_XOR_REG_REG(sbcs);
+
+    return true;
+}
+
+#undef TEST_XOR_REG_REG
+
+bool test_asm_check_ldrd()
+{
+    unsigned int A[2] = {0x12345678, 0x9ABCDEF0};
+    MAKE_TAINTED(A, sizeof(A));
+
+    int v = 0;
+    int v2 = 0;
+
+    printf("Test 'ldrd'\n");
+    asm volatile("ldrd %0, %1, [%2, #0]"
+                 : "=r"(v), "=r"(v2) // out 0
+                 : "r"(A));          // in 1
+
+    TEST_ASSSERT(IS_TAINTED(&v, sizeof(int)));
+    TEST_ASSSERT(IS_TAINTED(&v2, sizeof(int)));
+
+    v = 0;
+    v2 = 0;
+
+    printf("Test 'ldrexd'\n");
+    asm volatile("ldrexd %0, %1, [%2]"
+                 : "=r"(v), "=r"(v2) // out 0
+                 : "r"(A));          // in 1
+
+    TEST_ASSSERT(IS_TAINTED(&v, sizeof(int)));
+    TEST_ASSSERT(IS_TAINTED(&v2, sizeof(int)));
+
+    return true;
+}
+
+#define CHECK(com, r0, r1, offs)              \
+                                              \
+    printf("Test '" #com "'\n");              \
+    r0 = 0;                                   \
+    asm volatile(#com " %0, [%1, #" #offs "]" \
+                 : "=r"(r0)                   \
+                 : "r"(r1));                  \
+                                              \
+    TEST_ASSSERT(IS_TAINTED(&r0, sizeof(int)))
+
+#define CHECK_EX(com, r0, r1)     \
+                                  \
+    printf("Test '" #com "'\n");  \
+    r0 = 0;                       \
+    asm volatile(#com " %0, [%1]" \
+                 : "=r"(r0)       \
+                 : "r"(r1));      \
+                                  \
+    TEST_ASSSERT(IS_TAINTED(&r0, sizeof(int)))
+
+bool test_asm_check_ldr()
+{
+    unsigned int A[2] = {0x12345678, 0x9ABCDEF0}, v;
+    MAKE_TAINTED(A, sizeof(A));
+
+    CHECK(ldr, v, A, 0);
+    CHECK(ldr, v, A, 4);
+    CHECK(ldrb, v, A, 0);
+    CHECK(ldrb, v, A, 4);
+    CHECK(ldrh, v, A, 0);
+    CHECK(ldrh, v, A, 4);
+    CHECK(ldrsb, v, A, 0);
+    CHECK(ldrsb, v, A, 4);
+    CHECK(ldrsh, v, A, 0);
+    CHECK(ldrsh, v, A, 4);
+
+#ifdef MTHUMB
+
+    CHECK(ldrt, v, A, 0);
+    CHECK(ldrt, v, A, 4);
+    CHECK(ldrbt, v, A, 0);
+    CHECK(ldrbt, v, A, 4);
+    CHECK(ldrsbt, v, A, 0);
+    CHECK(ldrsbt, v, A, 4);
+    CHECK(ldrht, v, A, 0);
+    CHECK(ldrht, v, A, 4);
+    CHECK(ldrsht, v, A, 0);
+    CHECK(ldrsht, v, A, 4);
+
+#endif
+
+    CHECK_EX(ldrex, v, A);
+    CHECK_EX(ldrex, v, A);
+    CHECK_EX(ldrexb, v, A);
+    CHECK_EX(ldrexb, v, A);
+    CHECK_EX(ldrexh, v, A);
+    CHECK_EX(ldrexh, v, A);
+
+    return true;
+}
+
+#undef CHECK
+#undef CHECK_EX
+
+#define CHECK(com, v1, v2, v3, v4, c)                     \
+    v1 = v2 = v3 = v4 = 0;                                \
+    printf("Test '" #com "'\n");                          \
+                                                          \
+    asm volatile("mov r0, %4;"                            \
+                 "" #com " r0, {r1, r2, r3, r4};"         \
+                 "str r1, %0;"                            \
+                 "str r2, %1;"                            \
+                 "str r3, %2;"                            \
+                 "str r4, %3;"                            \
+                 : "=m"(v1), "=m"(v2), "=m"(v3), "=m"(v4) \
+                 : "r"(A + c)                             \
+                 : "r0", "r1", "r2", "r3", "r4");         \
+                                                          \
+    TEST_ASSSERT(IS_TAINTED(&val1, sizeof(int)));         \
+    TEST_ASSSERT(IS_TAINTED(&val2, sizeof(int)));         \
+    TEST_ASSSERT(IS_TAINTED(&val3, sizeof(int)));         \
+    TEST_ASSSERT(IS_TAINTED(&val4, sizeof(int)))
+
+#define CHECK_W(com, v1, v2, v3, v4, c)                   \
+    v1 = v2 = v3 = v4 = 0;                                \
+    printf("Test '" #com "'\n");                          \
+                                                          \
+    asm volatile("mov r0, %4;"                            \
+                 "" #com " r0!, {r1, r2, r3, r4};"        \
+                 "str r1, %0;"                            \
+                 "str r2, %1;"                            \
+                 "str r3, %2;"                            \
+                 "str r4, %3;"                            \
+                 : "=m"(v1), "=m"(v2), "=m"(v3), "=m"(v4) \
+                 : "r"(A + c)                             \
+                 : "r0", "r1", "r2", "r3", "r4");         \
+                                                          \
+    TEST_ASSSERT(IS_TAINTED(&val1, sizeof(int)));         \
+    TEST_ASSSERT(IS_TAINTED(&val2, sizeof(int)));         \
+    TEST_ASSSERT(IS_TAINTED(&val3, sizeof(int)));         \
+    TEST_ASSSERT(IS_TAINTED(&val4, sizeof(int)))
+
+bool test_asm_check_ldm()
+{
+    int A[] = {0, 1, 2, 3, 4};
+    int val1, val2, val3, val4;
+    MAKE_TAINTED(A, sizeof(A));
+
+    CHECK(ldmia, val1, val2, val3, val4, 0);
+    CHECK_W(ldmia, val1, val2, val3, val4, 0);
+
+    CHECK(ldmdb, val1, val2, val3, val4, 4);
+    CHECK_W(ldmdb, val1, val2, val3, val4, 4);
+
+#ifndef MTHUMB
+
+    CHECK(ldmib, val1, val2, val3, val4, 0);
+    CHECK_W(ldmib, val1, val2, val3, val4, 0);
+
+    CHECK(ldmda, val1, val2, val3, val4, 4);
+    CHECK_W(ldmda, val1, val2, val3, val4, 4);
+
+#endif
+
+    return true;
+}
+
+#undef CHECK
+#undef CHECK_W
+
+bool test_asm()
+{
+    TEST_ASSSERT(test_ldm());
+    //TEST_ASSSERT(test_asm_check_ldrd());
 
     return true;
 }
