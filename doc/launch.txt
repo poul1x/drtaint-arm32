@@ -1,0 +1,32 @@
+once before launching:
+ 
+current variables:
+
+	export LD_LIBRARY_PATH=/home/debian/drbuild/drmemory-armhf/exports32/drmf/lib32/release
+	export APP_PATH=/home/debian/drtaint/tests/build/
+	export LIB_PATH=/home/debian/drtaint/build/libdrtaint_test.so
+	export DRIO_PATH=/home/debian/drbuild/dynamorio-armhf/release/bin32
+
+--------------
+
+variants:
+
+	ls /home/debian/drtaint/tests/build
+	export APP_PATH=/home/debian/drtaint/tests/build*
+
+	ls /home/debian/drtaint/build/
+	export LIB_PATH=/home/debian/drtaint/build/*
+
+debug drrun:
+
+	export DRIO_PATH=/home/debian/drbuild/dynamorio-armhf/debug/bin32
+
+
+without debugging -> do:
+	
+	$DRIO_PATH/drrun -c $LIB_PATH -- ls
+
+-------------
+
+	$DRIO_PATH/drrun -c $LIB_PATH -- $APP_PATH/drtaint_test_arm
+	$DRIO_PATH/drrun -c $LIB_PATH -- $APP_PATH/drtaint_test_thumb

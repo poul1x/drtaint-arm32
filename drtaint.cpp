@@ -25,6 +25,9 @@ instr_affects_on_flags(int opcode);
 static bool
 instr_predicate_is_true(instr_t *where, uint flags);
 
+static void
+what_are_opnds(instr_t *where);
+
 extern bool
 instr_is_simd(instr_t *where);
 
@@ -161,11 +164,28 @@ propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
 
-    // place to %sapp2% the value placed at address [mem2]
+    // place to %sapp2% the value placed at [mem2] shadow address
     instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2, [sapp2]
                              (drcontext,
                               opnd_create_reg(sapp2),       // dst: sapp2
                               OPND_CREATE_MEM8(sapp2, 0))); // src: sapp2
+
+    // propagate 3d policy: ldr r0, [r1, r2].
+    // If r2 is tainted then r0 is tainted too
+    if (opnd_is_base_disp(mem2))
+    {
+        if (opnd_num_regs_used(mem2) == 2)
+        {
+            reg_id_t reg_ind = opnd_get_index(mem2);
+            auto sreg_ind = drreg_reservation{ilist, where};
+
+            // get value of %reg_ind% shadow register and place it to %sreg_ind%
+            drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg_ind, sreg_ind);
+
+            instrlist_meta_preinsert(ilist, where, INSTR_CREATE_orr // sapp2 |= sreg_ind
+                                     (drcontext, opnd_create_reg(sapp2), opnd_create_reg(sapp2), opnd_create_reg(sreg_ind)));
+        }
+    }
 
     // save the value of %sapp2% to shadow register of reg1
     instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sapp2, [sreg1]
@@ -207,14 +227,13 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                  (drcontext, OPND_CREATE_MEM8(sreg1, 0), // dst_mem: sreg1
                                   opnd_create_reg(sapp2)));              // src_reg: sapp2
 
-    // get shadow memory address of reg2 and place it to %sreg1% 
+    // get shadow memory address of reg2 and place it to %sreg1%
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg1);
-    
+
     // save the value of %sapp2% to shadow register of reg2
     instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sapp2, [sreg1]
                                  (drcontext, OPND_CREATE_MEM8(sreg1, 0), // dst_mem: sreg1
                                   opnd_create_reg(sapp2)));              // src_reg: sapp2
-
 }
 
 static void
@@ -502,7 +521,7 @@ template <>
 app_pc
 calculate_addr<DB>(instr_t *instr, void *base, int i, int top)
 {
-    return (app_pc)base - 4 * (top - i - 1);
+    return (app_pc)base - 4 * (top - i);
 }
 
 template <>
@@ -511,19 +530,19 @@ calculate_addr<IA>(instr_t *instr, void *base, int i, int top)
 {
     return (app_pc)base + 4 * i;
 }
-
+//////////////////////////
 template <>
 app_pc
 calculate_addr<DA>(instr_t *instr, void *base, int i, int top)
 {
-    return (app_pc)base - 4 * i;
+    return (app_pc)base - 4 * (top - i - 1);
 }
 
 template <>
 app_pc
 calculate_addr<IB>(instr_t *instr, void *base, int i, int top)
 {
-    return (app_pc)base + 4 * (top - i - 1);
+    return (app_pc)base + 4 * (i + 1);
 }
 
 template <stack_dir_t c>
@@ -537,9 +556,11 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
 {
     void *drcontext = dr_get_current_drcontext();
     instr_t *instr = instr_create(drcontext);
-
     decode(drcontext, (byte *)pc, instr);
+    
     int num_dsts = instr_num_dsts(instr);
+    if (writeback)
+        num_dsts--;
 
     for (int i = 0; i < num_dsts; ++i)
     {
@@ -552,7 +573,7 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
              opnd_get_reg(instr_get_src(instr, 1))))
             break;
 
-        // set taint from stack to the appropriate register
+       // set taint from stack to the appropriate register
         byte res;
         ok = drtaint_get_app_taint(drcontext, calculate_addr<c>(instr, base, i, num_dsts), &res);
         DR_ASSERT(ok);
@@ -576,8 +597,9 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
     instr_t *instr = instr_create(drcontext);
 
     decode(drcontext, (byte *)pc, instr);
+    int num_srcs = instr_num_srcs(instr);
 
-    for (int i = 0; i < instr_num_srcs(instr); ++i)
+    for (int i = 0; i < num_srcs; ++i)
     {
         bool ok;
 
@@ -592,10 +614,7 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
         byte res;
         ok = drtaint_get_reg_taint(drcontext, opnd_get_reg(instr_get_src(instr, i)), &res);
         DR_ASSERT(ok);
-
-        int top = writeback ? instr_num_srcs(instr) : instr_num_srcs(instr) - 1;
-
-        ok = drtaint_set_app_taint(drcontext, calculate_addr<c>(instr, base, i, top), res);
+        ok = drtaint_set_app_taint(drcontext, calculate_addr<c>(instr, base, i, num_srcs), res);
         DR_ASSERT(ok);
     }
     instr_destroy(drcontext, instr);
@@ -761,12 +780,12 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_ldrh:
     case OP_ldrsh:
     case OP_ldrsb:
-    
+
     // exclusive ldr
     case OP_ldrex:
     case OP_ldrexb:
     case OP_ldrexh:
-    
+
     // thumb mode
     case OP_ldrt:
     case OP_ldrbt:
@@ -1000,7 +1019,7 @@ instr_affects_on_flags(int opcode)
     case OP_cmn:
     case OP_tst:
     case OP_teq:
-    
+
     // other instructions must have {S} suffix
     case OP_adcs:
     case OP_adds:
@@ -1021,7 +1040,7 @@ instr_affects_on_flags(int opcode)
     case OP_rrxs:
     case OP_rsbs:
     case OP_rscs:
-    case OP_msr:    // writes to cspr directly
+    case OP_msr: // writes to cspr directly
     case OP_sbcs:
     case OP_subs:
 
@@ -1094,4 +1113,34 @@ instr_predicate_is_true(instr_t *where, uint cspr)
     }
 
     return false;
+}
+
+static void
+what_are_opnds(instr_t *where)
+{
+    int n = instr_num_srcs(where);
+
+    if (n == 0)
+        dr_printf("No args\n");
+    else
+    {
+        dr_printf("%d args:", n);
+        for (int i = 0; i < n; i++)
+        {
+            opnd_t opnd = instr_get_src(where, i);
+            const char *s = opnd_is_reg(opnd)
+                                ? "reg"
+                                : opnd_is_null(opnd)
+                                      ? "null"
+                                      : opnd_is_immed(opnd)
+                                            ? "imm"
+                                            : opnd_is_memory_reference(opnd)
+                                                  ? "mem"
+                                                  : "unknown";
+
+            dr_printf("%s ", s);
+        }
+
+        dr_printf("\n");
+    }
 }
