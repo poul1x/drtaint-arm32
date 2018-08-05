@@ -1,7 +1,6 @@
 #include "dr_api.h"
 #include "drmgr.h"
 #include "drreg.h"
-#include "drvector.h"
 
 #include "../drtaint.h"
 #include <syscall.h>
@@ -44,6 +43,17 @@ handle_start_trace(void *drcontext);
 static bool
 handle_check_trace(void *drcontext);
 
+dr_emit_flags_t event_bb(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
+                         bool for_trace, bool translating, void *user_data)
+{
+    if (!drmgr_is_first_instr(drcontext, inst))
+        return DR_EMIT_DEFAULT;
+
+    instrlist_disassemble(drcontext, (app_pc)tag, bb, STDOUT);
+
+    return DR_EMIT_DEFAULT;
+}
+
 DR_EXPORT void
 dr_client_main(client_id_t id, int argc, const char *argv[])
 {
@@ -56,7 +66,10 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
 
     dr_register_filter_syscall_event(event_filter_syscall);
     drmgr_register_pre_syscall_event(event_pre_syscall);
+    //drmgr_register_bb_instrumentation_event(NULL, event_bb, NULL);
     dr_register_exit_event(exit_event);
+
+    disassemble_set_syntax(DR_DISASM_ARM);
 
     dr_printf("\n----- DrTaint test client is running -----\n\n");
 }

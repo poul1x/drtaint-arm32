@@ -19,22 +19,31 @@ OP_ldrexh: 1
 OP_ldrd:   1
 OP_ldrexd: 1
 
+// ldmXX r0, {regs}; ldmXX r0!, {regs}
+OP_ldmia: 1
+OP_ldmib: 1
+OP_ldmda: 1
+OP_ldmdb: 1
 
-OP_ldmia: 
-OP_ldmib: 
-OP_ldmda: 
-OP_ldmdb: 
+// stmXX r0, {regs}; stmXX r0!, {regs}
+OP_stmia: 1
+OP_stmib: 1
+OP_stmda: 1
+OP_stmdb: 1
 
-OP_stmia: 
-OP_stmib: 
-OP_stmda: 
-OP_stmdb: 
+// strXX r0, [r1, #imm]; 
+OP_str:    1
+OP_strb:   1
+OP_strh:   1
+OP_strt:   1
+OP_strbt:  1
+OP_strht:  1
+OP_strex:  1
+OP_strexb: 1
+OP_strexh: 1
 
-OP_str:
-OP_strb:
-OP_strd:
-OP_strh:
-OP_strex:
+OP_strd:  
+OP_strexd:  
 
 OP_mov:
 OP_mvn:

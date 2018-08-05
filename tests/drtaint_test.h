@@ -41,6 +41,8 @@ bool test_struct();
 bool test_func_call();
 bool test_array();
 bool test_untaint();
+bool test_untaint_stack();
+
 
 bool test_asm_ldr_imm();
 bool test_asm_ldr_imm_ex();
@@ -48,7 +50,16 @@ bool test_asm_ldr_reg();
 bool test_asm_ldr_reg_ex();
 bool test_asm_ldrd_imm();
 bool test_asm_ldrd_reg();
+
 bool test_asm_ldm();
 bool test_asm_ldm_w();
 bool test_asm_ldm_ex();
 bool test_asm_ldm_ex_w();
+
+bool test_asm_str_imm();
+bool test_asm_str_reg();
+
+bool test_asm_stm();
+bool test_asm_stm_w();
+bool test_asm_stm_ex();
+bool test_asm_stm_ex_w();

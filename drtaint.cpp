@@ -26,7 +26,10 @@ static bool
 instr_predicate_is_true(instr_t *where, uint flags);
 
 static void
-what_are_opnds(instr_t *where);
+what_are_srcs(instr_t *where);
+
+static void
+what_are_dsts(instr_t *where);
 
 extern bool
 instr_is_simd(instr_t *where);
@@ -251,6 +254,8 @@ propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
     opnd_t mem2 = instr_get_dst(where, 0);
 
+    //what_are_dsts(where);
+
     // dereference the memory address at mem2 and store the result to %sapp2% register
     drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
 
@@ -264,6 +269,18 @@ propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sreg1, [sapp2]
                                  (drcontext, OPND_CREATE_MEM8(sapp2, 0), // dst_mem: sapp2
                                   opnd_create_reg(sreg1)));              // src_reg: sreg1
+}
+
+static void
+propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
+/*
+    strd reg1, reg2, reg3, [mem2]  
+
+    We need to save the tag value stored in 
+    shadow registers of reg2 and reg3 to shadow address of [mem2] 
+*/
+{
+    // what_are_dsts(where);
 }
 
 static void
@@ -557,7 +574,7 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
     void *drcontext = dr_get_current_drcontext();
     instr_t *instr = instr_create(drcontext);
     decode(drcontext, (byte *)pc, instr);
-    
+
     int num_dsts = instr_num_dsts(instr);
     if (writeback)
         num_dsts--;
@@ -573,7 +590,7 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
              opnd_get_reg(instr_get_src(instr, 1))))
             break;
 
-       // set taint from stack to the appropriate register
+        // set taint from stack to the appropriate register
         byte res;
         ok = drtaint_get_app_taint(drcontext, calculate_addr<c>(instr, base, i, num_dsts), &res);
         DR_ASSERT(ok);
@@ -595,9 +612,11 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
 {
     void *drcontext = dr_get_current_drcontext();
     instr_t *instr = instr_create(drcontext);
-
     decode(drcontext, (byte *)pc, instr);
+
     int num_srcs = instr_num_srcs(instr);
+    if (writeback)
+        num_srcs--;
 
     for (int i = 0; i < num_srcs; ++i)
     {
@@ -654,6 +673,9 @@ static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       bool for_trace, bool translating, void *user_data)
 {
+    if (instr_is_meta(where))
+        return DR_EMIT_DEFAULT;
+
     int opcode = instr_get_opcode(where);
 
     // get opcode of previsous instruction
@@ -674,6 +696,29 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         uint flags = drtaint_get_cpsr(drcontext);
         if (!instr_predicate_is_true(where, flags))
             return DR_EMIT_DEFAULT;
+    }
+
+    // untaint stack area when allocating a new frame
+    if (opcode == OP_sub || opcode == OP_subs)
+    {
+        if (opnd_get_reg(instr_get_dst(where, 0)) == DR_REG_SP &&
+            opnd_get_reg(instr_get_src(where, 0)) == DR_REG_SP &&
+            opnd_is_immed(instr_get_src(where, 1)))
+        {
+            bool ok;
+            dr_mcontext_t mcontext = {sizeof(dr_mcontext_t), DR_MC_CONTROL};
+            ok = dr_get_mcontext(drcontext, &mcontext);
+            DR_ASSERT(ok);
+
+            ptr_int_t imm = opnd_get_immed_int(instr_get_src(where, 1));
+            app_pc sp_val = (app_pc)reg_get_value(DR_REG_SP, &mcontext);
+
+            for (int i = 1; i < imm + 2; i++)
+            {
+                ok = drtaint_set_app_taint(drcontext, &sp_val[-i], 0);
+                DR_ASSERT(ok);
+            }
+        }
     }
 
     // no support for simd instructions
@@ -804,14 +849,24 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 
     case OP_str:
     case OP_strb:
-    case OP_strd:
     case OP_strh:
     case OP_strex:
+
+    // thumb
+    case OP_strt:
+    case OP_strbt:
+    case OP_strht:
+
+        propagate_str(drcontext, tag, ilist, where);
+        break;
+
+    case OP_strd:
+    case OP_strexd:
 
         /* For OP_strex, failure is written to a second dst operand,
          * but this isn't controllable.
          */
-        propagate_str(drcontext, tag, ilist, where);
+        propagate_strd(drcontext, tag, ilist, where);
         break;
 
     case OP_mov:
@@ -1116,7 +1171,7 @@ instr_predicate_is_true(instr_t *where, uint cspr)
 }
 
 static void
-what_are_opnds(instr_t *where)
+what_are_srcs(instr_t *where)
 {
     int n = instr_num_srcs(where);
 
@@ -1128,6 +1183,36 @@ what_are_opnds(instr_t *where)
         for (int i = 0; i < n; i++)
         {
             opnd_t opnd = instr_get_src(where, i);
+            const char *s = opnd_is_reg(opnd)
+                                ? "reg"
+                                : opnd_is_null(opnd)
+                                      ? "null"
+                                      : opnd_is_immed(opnd)
+                                            ? "imm"
+                                            : opnd_is_memory_reference(opnd)
+                                                  ? "mem"
+                                                  : "unknown";
+
+            dr_printf("%s ", s);
+        }
+
+        dr_printf("\n");
+    }
+}
+
+static void
+what_are_dsts(instr_t *where)
+{
+    int n = instr_num_dsts(where);
+
+    if (n == 0)
+        dr_printf("No args\n");
+    else
+    {
+        dr_printf("%d args:", n);
+        for (int i = 0; i < n; i++)
+        {
+            opnd_t opnd = instr_get_dst(where, i);
             const char *s = opnd_is_reg(opnd)
                                 ? "reg"
                                 : opnd_is_null(opnd)

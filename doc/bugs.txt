@@ -1,0 +1,2 @@
+1) strh r0, [r1], #imm | ARM | taint does not distribute from tainted register r0 to memory [r1]
+1) strh r0, [r1], r2 | ARM | taint does not distribute from tainted register r0 to memory [r1]
