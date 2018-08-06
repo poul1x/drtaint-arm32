@@ -3,7 +3,6 @@
 #include <sys/types.h>
 #include <stdio.h>
 #include <string.h>
-#include <map>
 
 /*
     This is a test application which checks 
@@ -30,43 +29,48 @@
     the data was tracked or not. CLEAR macro allows you to make data untainted
 */
 
-static std::map<std::string, testfunc>
-    gTestfunc_table = {
+Test gTests[] = {
 
-        //{"simple", test_simple},
-        //{"arith", test_arith},
-        //{"assign", test_assign},
-        //{"bitwise", test_bitwise},
-        //{"struct", test_struct},
-        {"func_call", test_func_call},
-        //{"array", test_array},
-        //{"condex_op", test_condex_op},
-        //{"assign_ex", test_assign_ex},
-        //{"untaint", test_untaint},
-        {"untaint_stack", test_untaint_stack},
+    //{"simple", test_simple},
+    //{"arith", test_arith},
+    //{"assign", test_assign},
+    //{"bitwise", test_bitwise},
+    //{"struct", test_struct},
+    //{"func_call", test_func_call},
+    //{"array", test_array},
+    //{"condex_op", test_condex_op},
+    //{"assign_ex", test_assign_ex},
+    //{"untaint", test_untaint},
+    //{"untaint_stack", test_untaint_stack},
 
-        {"ldr_imm", test_asm_ldr_imm},
-        {"ldr_imm_ex", test_asm_ldr_imm_ex},
-        {"ldr_reg", test_asm_ldr_reg},
-        {"ldr_reg_ex", test_asm_ldr_reg_ex},
+    //{"ldr_imm", test_asm_ldr_imm},
+    //{"ldr_imm_ex", test_asm_ldr_imm_ex},
+    //{"ldr_reg", test_asm_ldr_reg},
+    //{"ldr_reg_ex", test_asm_ldr_reg_ex},
+    //
+    {"ldrd_imm", test_asm_ldrd_imm},
+    {"ldrd_reg", test_asm_ldrd_reg},
+    //
+    //{"ldm", test_asm_ldm},
+    //{"ldm_w", test_asm_ldm_w},
+    //{"ldm_ex", test_asm_ldm_ex},
+    //{"ldm_ex_w", test_asm_ldm_ex_w},
+    //
+    {"str_imm", test_asm_str_imm},
+    {"str_reg", test_asm_str_reg},
+    {"strex", test_asm_strex},
 
-        {"ldrd_imm", test_asm_ldrd_imm},
-        {"ldrd_reg", test_asm_ldrd_reg},
-
-        {"ldm", test_asm_ldm},
-        {"ldm_w", test_asm_ldm_w},
-        {"ldm_ex", test_asm_ldm_ex},
-        {"ldm_ex_w", test_asm_ldm_ex_w},
-
-        {"str_imm", test_asm_str_imm},
-        {"str_reg", test_asm_str_reg},
-
-        {"stm", test_asm_stm},
-        {"stm_w", test_asm_stm_w},
-        {"stm_ex", test_asm_stm_ex},
-        {"stm_ex_w", test_asm_stm_ex_w},
+    {"strd_imm", test_asm_strd_imm},
+    {"strd_reg", test_asm_strd_reg},
+    {"strexd", test_asm_strexd},
+    //{"stm", test_asm_stm},
+    //{"stm_w", test_asm_stm_w},
+    //{"stm_ex", test_asm_stm_ex},
+    //{"stm_ex_w", test_asm_stm_ex_w},
 
 };
+
+const int gTests_sz = sizeof(gTests) / sizeof(gTests[0]);
 
 int main(int argc, char *argv[])
 {
@@ -89,33 +93,28 @@ int main(int argc, char *argv[])
     }
 
     int count_failed = 0, count_passed = 0;
+    bool passed;
+    Test *ptest;
 
-    try
+    for (int i = 1; i < argc; i++)
     {
-        bool passed;
-        for (int i = 1; i < argc; i++)
+        ptest = find_test(argv[i]);
+        if (ptest)
         {
-            if (gTestfunc_table.find(argv[i]) == gTestfunc_table.end())
-                throw std::runtime_error(
-                    "Test " + std::string(argv[i]) + " not found");
+            printf("\n\n--- Running test %s--- \n\n", ptest->name);
+            passed = ptest->run();
 
-            printf("\n\n--- Running test %s--- \n\n", argv[i]);
-
-            passed = gTestfunc_table[argv[i]]();
-            printf("Test %s is %s\n", argv[i],
+            printf("Test %s is %s\n", ptest->name,
                    passed ? "passed" : "failed");
 
             passed ? count_passed++ : count_failed++;
         }
-    }
 
-    catch (std::runtime_error e)
-    {
-        printf("Runtime error occured: %s\n\n", e.what());
-    }
-    catch (...)
-    {
-        printf("Unknown error occured\n\n");
+        else
+        {
+            printf("Error: test '%s' not found\n", argv[i]);
+            break;
+        }
     }
 
     printf("\nResults: passed - %d, failed - %d\nExitting...\n",
@@ -124,32 +123,38 @@ int main(int argc, char *argv[])
     return 0;
 }
 
+Test *find_test(const char *name)
+{
+    Test *pt;
+
+    for (int i = 0; i < gTests_sz; i++)
+    {
+        pt = &gTests[i];
+
+        if (!strcmp(name, pt->name))
+            return pt;
+    }
+
+    return NULL;
+}
+
 void run_all_tests()
 {
     int count_failed = 0, count_passed = 0;
+    bool passed;
+    Test *ptest;
 
-    try
+    for (int i = 1; i < gTests_sz; i++)
     {
-        bool passed;
-        for (const auto &elem : gTestfunc_table)
-        {
-            printf("\n\n--- Running test %s ---\n\n", elem.first.c_str());
+        ptest = &gTests[i];
 
-            passed = elem.second();
-            printf("Test %s is %s\n", elem.first.c_str(),
-                   passed ? "passed" : "failed");
+        printf("\n\n--- Running test %s--- \n\n", ptest->name);
+        passed = ptest->run();
 
-            passed ? count_passed++ : count_failed++;
-        }
-    }
+        printf("Test %s is %s\n", ptest->name,
+               passed ? "passed" : "failed");
 
-    catch (std::runtime_error e)
-    {
-        printf("Runtime error occured: %s\n\n", e.what());
-    }
-    catch (...)
-    {
-        printf("Unknown error occured\n\n");
+        passed ? count_passed++ : count_failed++;
     }
 
     printf("\nResults: passed - %d, failed - %d\nExitting...\n",
@@ -158,12 +163,10 @@ void run_all_tests()
 
 void show_all_tests()
 {
-    int i = 1;
-
     printf("Available tests:\n");
 
-    for (const auto &elem : gTestfunc_table)
-        printf("  %-3d %s\n", i++, elem.first.c_str());
+    for (int i = 0; i<gTests_sz; i++)
+        printf("  %-3d %s\n", i + 1, gTests[i].name);
 }
 
 void my_zero_memory(void *dst, int size)
@@ -930,19 +933,15 @@ bool test_asm_ldr_reg_ex()
 #endif
 
 #ifndef MTHUMB
-#define CHECK_ALL_2R_EX(com, r0, r1, r2)        \
-                                                \
-    INL_LDRD_I(com, r0, r1, r2);                \
-    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
-    TEST_ASSERT(!IS_TAINTED(&r1, sizeof(int))); \
-                                                \
-    INL_LDRD_I_PRE(com, r0, r1, r2);            \
-    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
+#define CHECK_ALL_2R_EX(com, r0, r1, r2)       \
+                                               \
+    INL_LDRD_I(com, r0, r1, r2);               \
+    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
     TEST_ASSERT(!IS_TAINTED(&r1, sizeof(int)))
 #else
-#define CHECK_ALL_2R_EX(com, r0, r1, r2)        \
-    INL_LDRD_I(com, r0, r1, r2);                \
-    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
+#define CHECK_ALL_2R_EX(com, r0, r1, r2)       \
+    INL_LDRD_I(com, r0, r1, r2);               \
+    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
     TEST_ASSERT(!IS_TAINTED(&r1, sizeof(int)))
 #endif
 
@@ -965,7 +964,9 @@ bool test_asm_ldrd_imm()
     MAKE_TAINTED(A, sizeof(A));
     CHECK_ALL_2R(ldrd, v0, v1, pA);
 
-    CLEAR(A, sizeof(A));
+    printf("Extended\n");
+    CLEAR(A, sizeof(A));    
+    MAKE_TAINTED(&A[1], sizeof(int));
     CHECK_ALL_2R_EX(ldrd, v0, v1, pA);
 
     return true;
@@ -996,6 +997,34 @@ bool test_asm_ldrd_reg()
     printf("r0 = %08X, r1 = %08X\n", v0, v1);
     TEST_ASSERT(IS_TAINTED(&v0, sizeof(int)));
     TEST_ASSERT(IS_TAINTED(&v1, sizeof(int)));
+
+    return true;
+}
+
+#ifndef MTHUMB
+#define CHECK_ALL__EX(com, r0, r1, r2)       \
+                                               \
+    INL_LDRD_I(com, r0, r1, r2);               \
+    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
+    TEST_ASSERT(!IS_TAINTED(&r1, sizeof(int)))
+#else
+#define CHECK_ALL_2R_EX(com, r0, r1, r2)       \
+    INL_LDRD_I(com, r0, r1, r2);               \
+    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
+    TEST_ASSERT(!IS_TAINTED(&r1, sizeof(int)))
+#endif
+
+bool test_asm_ldrd_ex()
+{
+    unsigned int A[3] = {0x12345678, 0x9ABCDEF0}, v0, v1;
+    unsigned int **pA = (unsigned int **)&A;
+
+    MAKE_TAINTED(A, sizeof(int));
+    CHECK_ALL_2R(ldrd, v0, v1, pA);
+
+    CLEAR(A, sizeof(A));
+    MAKE_TAINTED(&A[1], sizeof(int));
+    CHECK_ALL_2R_EX(ldrd, v0, v1, pA);
 
     return true;
 }
@@ -1248,24 +1277,6 @@ bool test_asm_ldm_ex_w()
     TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)))
 #endif
 
-#define INL_STREX(com, r0, base)              \
-    base[0] = 0;                              \
-    base[1] = 0;                              \
-    printf("Test '" #com " r0, r2, [r1]'\n"); \
-                                              \
-    asm volatile("ldr r0, %0;"                \
-                 "mov r1, %1;"                \
-                 "" #com " r0, r2, [r1];"     \
-                 :                            \
-                 : "m"(r0), "r"(base)         \
-                 : "r0", "r1", "r2")
-
-#define CHECK_STREX(com, r0, base)       \
-    INL_STREX(com, r0, base);            \
-    printf("%d %d\n", base[0], base[1]); \
-    TEST_ASSERT(base[0] == 1);           \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)))
-
 bool test_asm_str_imm()
 {
     int A[2] = {0}, v = 1;
@@ -1277,13 +1288,41 @@ bool test_asm_str_imm()
     CHECK_S_ALL_IMM(strht, v, A);
 #endif
 
-    INL_STREX(strex, v, A);
-    INL_STREX(strexh, v, A);
-    INL_STREX(strexb, v, A);
-
     CHECK_S_ALL_IMM(str, v, A);
     CHECK_S_ALL_IMM(strb, v, A);
     CHECK_S_ALL_IMM(strh, v, A);
+
+    return true;
+}
+
+#define INL_STREX(com, rd, r0, base)          \
+    base[0] = 0;                              \
+    base[1] = 0;                              \
+    printf("Test '" #com " rd, r2, [r1]'\n"); \
+                                              \
+    asm volatile("ldr r2, %1;"                \
+                 "mov r1, %2;"                \
+                 "" #com " r0, r2, [r1];"     \
+                 "str r0, %0;"                \
+                 : "=m"(rd)                   \
+                 : "m"(r0), "r"(base)         \
+                 : "r0", "r1", "r2")
+
+#define CHECK_STREX(com, rd, r0, base)              \
+    INL_STREX(com, rd, r0, base);                   \
+    printf("%d %d\n", base[0], base[1]);            \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int))); \
+    TEST_ASSERT(!IS_TAINTED(&rd, sizeof(int)))
+
+bool test_asm_strex()
+{
+    int A[2] = {0}, v = 1, r = 0;
+    MAKE_TAINTED(&v, sizeof(int));
+    MAKE_TAINTED(&r, sizeof(int));
+
+    CHECK_STREX(strex, r, v, A);
+    CHECK_STREX(strexb, r, v, A);
+    CHECK_STREX(strexh, r, v, A);
 
     return true;
 }
@@ -1367,6 +1406,206 @@ bool test_asm_str_reg()
 }
 
 #pragma endregion asm_str_reg
+
+#pragma region asm_strd
+
+#define INL_STRD(com, r0, r1, base)            \
+    base[0] = base[1] = base[2] = 0;           \
+    printf("Test '" #com " r0, r1, [r2]'\n");  \
+    asm volatile("ldr r0, %0;"                 \
+                 "ldr r1, %1;"                 \
+                 "mov r2, %2;"                 \
+                 "" #com " r0, r1, [r2];"      \
+                 :                             \
+                 : "m"(r0), "m"(r1), "r"(base) \
+                 : "r0", "r1", "r2")
+
+#define INL_STRD_IMM(com, r0, r1, base)           \
+    base[0] = base[1] = base[2] = 0;              \
+    printf("Test '" #com " r0, r1, [r2, #4]'\n"); \
+    asm volatile("ldr r0, %0;"                    \
+                 "ldr r1, %1;"                    \
+                 "mov r2, %2;"                    \
+                 "" #com " r0, r1, [r2, #4];"     \
+                 :                                \
+                 : "m"(r0), "m"(r1), "r"(base)    \
+                 : "r0", "r1", "r2")
+
+#ifndef MTHUMB
+#define INL_STRD_IMM_PRE(com, r0, r1, base)        \
+    base[0] = base[1] = base[2] = 0;               \
+    printf("Test '" #com " r0, r1, [r2, #4]!'\n"); \
+    asm volatile("ldr r0, %0;"                     \
+                 "ldr r1, %1;"                     \
+                 "mov r2, %2;"                     \
+                 "" #com " r0, r1, [r2, #4]!;"     \
+                 :                                 \
+                 : "m"(r0), "m"(r1), "r"(base)     \
+                 : "r0", "r1", "r2")
+
+#define INL_STRD_IMM_POST(com, r0, r1, base)      \
+    base[0] = base[1] = base[2] = 0;              \
+    printf("Test '" #com " r0, r1, [r2], #4'\n"); \
+    asm volatile("ldr r0, %0;"                    \
+                 "ldr r1, %1;"                    \
+                 "mov r2, %2;"                    \
+                 "" #com " r0, r1, [r2], #4;"     \
+                 :                                \
+                 : "m"(r0), "m"(r1), "r"(base)    \
+                 : "r0", "r1", "r2")
+#endif
+
+#ifndef MTHUMB
+#define CHECK_SD_ALL_IMM(com, r0, r1, base)          \
+    INL_STRD(com, r0, r1, base);                     \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
+                                                     \
+    INL_STRD_IMM(com, r0, r1, base);                 \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));  \
+                                                     \
+    INL_STRD_IMM_PRE(com, r0, r1, base);             \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));  \
+                                                     \
+    INL_STRD_IMM_POST(com, r0, r1, base);            \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)))
+#else
+#define CHECK_SD_ALL_IMM(com, r0, r1, base)          \
+    INL_STRD(com, r0, r1, base);                     \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
+                                                     \
+    INL_STRD_IMM(com, r0, r1, base);                 \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)))
+#endif
+
+bool test_asm_strd_imm()
+{
+    int A[3] = {0}, v1 = 1, v2 = 2;
+    MAKE_TAINTED(&v1, sizeof(int));
+    MAKE_TAINTED(&v2, sizeof(int));
+    CHECK_SD_ALL_IMM(strd, v1, v2, A);
+
+    return true;
+}
+
+#define INL_STRD_REG(com, r0, r1, base)           \
+    base[0] = base[1] = base[2] = 0;              \
+    printf("Test '" #com " r0, r1, [r2, r3]'\n"); \
+    asm volatile("ldr r0, %0;"                    \
+                 "ldr r1, %1;"                    \
+                 "mov r2, %2;"                    \
+                 "mov r3, #4;"                    \
+                 "" #com " r0, r1, [r2, r3];"     \
+                 :                                \
+                 : "m"(r0), "m"(r1), "r"(base)    \
+                 : "r0", "r1", "r2", "r3")
+
+#ifndef MTHUMB
+#define INL_STRD_REG_PRE(com, r0, r1, base)        \
+    base[0] = base[1] = base[2] = 0;               \
+    printf("Test '" #com " r0, r1, [r2, r3]!'\n"); \
+    asm volatile("ldr r0, %0;"                     \
+                 "ldr r1, %1;"                     \
+                 "mov r2, %2;"                     \
+                 "mov r3, #4;"                     \
+                 "" #com " r0, r1, [r2, r3]!;"     \
+                 :                                 \
+                 : "m"(r0), "m"(r1), "r"(base)     \
+                 : "r0", "r1", "r2", "r3")
+
+#define INL_STRD_REG_POST(com, r0, r1, base)      \
+    base[0] = base[1] = base[2] = 0;              \
+    printf("Test '" #com " r0, r1, [r2], r3'\n"); \
+    asm volatile("ldr r0, %0;"                    \
+                 "ldr r1, %1;"                    \
+                 "mov r2, %2;"                    \
+                 "mov r3, #4;"                    \
+                 "" #com " r0, r1, [r2], r3;"     \
+                 :                                \
+                 : "m"(r0), "m"(r1), "r"(base)    \
+                 : "r0", "r1", "r2", "r3")
+#endif
+
+#ifndef MTHUMB
+#define CHECK_SD_ALL_REG(com, r0, r1, base)          \
+                                                     \
+    INL_STRD_REG(com, r0, r1, base);                 \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));  \
+                                                     \
+    INL_STRD_REG_PRE(com, r0, r1, base);             \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));  \
+                                                     \
+    INL_STRD_REG_POST(com, r0, r1, base);            \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)))
+#else
+#define CHECK_SD_ALL_REG(com, r0, r1, base)          \
+                                                     \
+    INL_STRD_REG(com, r0, r1, base);                 \
+    printf("%d %d %d\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)))
+#endif
+
+bool test_asm_strd_reg()
+{
+    int A[3] = {0}, v1 = 1, v2 = 2;
+    MAKE_TAINTED(&v1, sizeof(int));
+    MAKE_TAINTED(&v2, sizeof(int));
+    CHECK_SD_ALL_REG(strd, v1, v2, A);
+
+    return true;
+}
+
+#define INL_STREXD(com, r0, r1, r2, base)               \
+    base[0] = base[1] = 0;                              \
+    printf("Test '" #com " r2, r0, r1, [r3]'\n");       \
+    asm volatile("ldr r6, %1;"                          \
+                 "ldr r0, %2;"                          \
+                 "ldr r1, %3;"                          \
+                 "mov r3, %4;"                          \
+                 "" #com " r6, r0, r1, [r3];"           \
+                 "str r2, %0;"                          \
+                 : "=m"(r0)                             \
+                 : "m"(r0), "m"(r1), "m"(r2), "r"(base) \
+                 : "r0", "r1", "r2", "r3")
+
+#define CHECK_STREXD(com, r0, r1, r2, base)         \
+    INL_STREXD(com, r0, r1, r2, base);              \
+    printf("%d %d %d\n", r0, base[0], base[1]);     \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int))); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int))); \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
+
+bool test_asm_strexd()
+{
+    int A[2] = {0};
+    int v1 = 1, v2 = 2, v3 = 3;
+    MAKE_TAINTED(&v1, sizeof(int));
+    MAKE_TAINTED(&v2, sizeof(int));
+    MAKE_TAINTED(&v3, sizeof(int));
+
+    CHECK_STREXD(strexd, v1, v2, v3, A);
+    return true;
+}
+
+#pragma endregion asm_strd
 
 #pragma region asm_stmd
 

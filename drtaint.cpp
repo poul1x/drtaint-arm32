@@ -154,29 +154,28 @@ propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     [mem2] shadow address to shadow register of reg1
 */
 {
-    auto sreg1 = drreg_reservation{ilist, where};
-    auto sapp2 = drreg_reservation{ilist, where};
-
-    reg_id_t reg1 = opnd_get_reg(instr_get_dst(where, 0));
     opnd_t mem2 = instr_get_src(where, 0);
-
-    // dereference the memory address at mem2 and store the result to %sapp2% register
-    drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
-
-    // get shadow memory addresses of reg1 and [mem2] and place them to %sreg1% and %sapp2%
-    drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
-    drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
-
-    // place to %sapp2% the value placed at [mem2] shadow address
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2, [sapp2]
-                             (drcontext,
-                              opnd_create_reg(sapp2),       // dst: sapp2
-                              OPND_CREATE_MEM8(sapp2, 0))); // src: sapp2
-
-    // propagate 3d policy: ldr r0, [r1, r2].
-    // If r2 is tainted then r0 is tainted too
     if (opnd_is_base_disp(mem2))
     {
+        auto sreg1 = drreg_reservation{ilist, where};
+        auto sapp2 = drreg_reservation{ilist, where};
+        reg_id_t reg1 = opnd_get_reg(instr_get_dst(where, 0));
+
+        // dereference the memory address at mem2 and store the result to %sapp2% register
+        drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
+
+        // get shadow memory addresses of reg1 and [mem2] and place them to %sreg1% and %sapp2%
+        drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
+        drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
+
+        // place to %sapp2% the value placed at [mem2] shadow address
+        instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2, [sapp2]
+                                 (drcontext,
+                                  opnd_create_reg(sapp2),       // dst: sapp2
+                                  OPND_CREATE_MEM8(sapp2, 0))); // src: sapp2
+
+        // propagate 3d policy: ldr r0, [r1, r2].
+        // If r2 is tainted then r0 is tainted too
         if (opnd_num_regs_used(mem2) == 2)
         {
             reg_id_t reg_ind = opnd_get_index(mem2);
@@ -188,12 +187,12 @@ propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
             instrlist_meta_preinsert(ilist, where, INSTR_CREATE_orr // sapp2 |= sreg_ind
                                      (drcontext, opnd_create_reg(sapp2), opnd_create_reg(sapp2), opnd_create_reg(sreg_ind)));
         }
-    }
 
-    // save the value of %sapp2% to shadow register of reg1
-    instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sapp2, [sreg1]
-                                 (drcontext, OPND_CREATE_MEM8(sreg1, 0), // dst_mem: sreg1
-                                  opnd_create_reg(sapp2)));              // src_reg: sapp2
+        // save the value of %sapp2% to shadow register of reg1
+        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sapp2, [sreg1]
+                                     (drcontext, OPND_CREATE_MEM8(sreg1, 0), // dst_mem: sreg1
+                                      opnd_create_reg(sapp2)));              // src_reg: sapp2
+    }
 }
 
 static void
@@ -205,38 +204,50 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     [mem2] shadow address to shadow registers reg1, reg2
 */
 {
-    auto sreg1 = drreg_reservation{ilist, where};
-    auto sapp2 = drreg_reservation{ilist, where};
-
-    reg_id_t reg1 = opnd_get_reg(instr_get_dst(where, 0));
-    reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 1));
     opnd_t mem2 = instr_get_src(where, 0);
+    if (opnd_is_base_disp(mem2))
+    {
+        auto sreg1 = drreg_reservation{ilist, where};
+        auto sapp2 = drreg_reservation{ilist, where};
+        auto sapp2n = drreg_reservation{ilist, where};
 
-    // dereference the memory address at mem2 and store the result to %sapp2% register
-    drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
+        reg_id_t reg1 = opnd_get_reg(instr_get_dst(where, 0));
+        reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 1));
+        reg_id_t sreg2 = sreg1;
 
-    // get shadow memory addresses of reg1 and [mem2] and place them to %sreg1% and %sapp2%
-    drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
-    drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
+        // dereference the memory address at mem2 and store the result to %sapp2% register
+        drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
 
-    // place to %sapp2% the value placed at address [mem2]
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2, [sapp2]
-                             (drcontext,
-                              opnd_create_reg(sapp2),       // dst: sapp2
-                              OPND_CREATE_MEM8(sapp2, 0))); // src: sapp2
+        // get [mem2 + 4] address
+        instrlist_meta_preinsert(ilist, where, XINST_CREATE_add_2src // add sapp2n, sapp2, #4
+                                 (drcontext, opnd_create_reg(sapp2n),
+                                  opnd_create_reg(sapp2), 
+                                  OPND_CREATE_INT8(4)));  
 
-    // save the value of %sapp2% to shadow register of reg1
-    instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sapp2, [sreg1]
-                                 (drcontext, OPND_CREATE_MEM8(sreg1, 0), // dst_mem: sreg1
-                                  opnd_create_reg(sapp2)));              // src_reg: sapp2
+        // get shadow memory addresses of reg1 and [mem2] and place them to %sreg1% and %sapp2%
+        drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
+        drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
 
-    // get shadow memory address of reg2 and place it to %sreg1%
-    drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg1);
+        // place to %sapp2% the value placed at [mem2] shadow address
+        instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2, [sapp2]
+                                 (drcontext, opnd_create_reg(sapp2), OPND_CREATE_MEM8(sapp2, 0)));
 
-    // save the value of %sapp2% to shadow register of reg2
-    instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sapp2, [sreg1]
-                                 (drcontext, OPND_CREATE_MEM8(sreg1, 0), // dst_mem: sreg1
-                                  opnd_create_reg(sapp2)));              // src_reg: sapp2
+        // save the value of %sapp2% to shadow register of reg1
+        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str sapp2, [sreg1]
+                                     (drcontext, OPND_CREATE_MEM8(sreg1, 0), opnd_create_reg(sapp2)));
+
+        // get shadow memory addresses of reg2 and [mem2 + 4] and place them to %sreg2% and %sapp2n%
+        drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2n, sreg2);
+        drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
+
+        // place to %sapp2n% the value placed at [mem2 + 4] shadow address
+        instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2n, [sapp2n]
+                                 (drcontext, opnd_create_reg(sapp2n), OPND_CREATE_MEM8(sapp2n, 0)));
+
+        // save the value of %sapp2n% to shadow register of reg2
+        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str sapp2n, [sreg2]
+                                     (drcontext, OPND_CREATE_MEM8(sreg2, 0), opnd_create_reg(sapp2n)));
+    }
 }
 
 static void
@@ -248,39 +259,115 @@ propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     shadow register of reg1 to shadow address of [mem2] 
 */
 {
-    auto sreg1 = drreg_reservation{ilist, where};
-    auto sapp2 = drreg_reservation{ilist, where};
-
-    reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
     opnd_t mem2 = instr_get_dst(where, 0);
+    if (opnd_is_base_disp(mem2))
+    {
+        auto sreg1 = drreg_reservation{ilist, where};
+        auto sapp2 = drreg_reservation{ilist, where};
 
-    //what_are_dsts(where);
+        reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
 
-    // dereference the memory address at mem2 and store the result to %sapp2% register
-    drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
+        // dereference the memory address at mem2 and store the result to %sapp2% register
+        drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
 
-    // get shadow memory address of [mem2] and place it to %sapp2%
-    drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
+        // get shadow memory address of [mem2] and place it to %sapp2%
+        drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
 
-    // get value of shadow register of reg1 and place it to %sreg1%
-    drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
+        // get value of shadow register of reg1 and place it to %sreg1%
+        drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
 
-    // write the value of reg1 to [mem2] shadow address
-    instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sreg1, [sapp2]
-                                 (drcontext, OPND_CREATE_MEM8(sapp2, 0), // dst_mem: sapp2
-                                  opnd_create_reg(sreg1)));              // src_reg: sreg1
+        // write the value of reg1 to [mem2] shadow address
+        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sreg1, [sapp2]
+                                     (drcontext, OPND_CREATE_MEM8(sapp2, 0), // dst_mem: sapp2
+                                      opnd_create_reg(sreg1)));              // src_reg: sreg1
+
+        // if it's a strex then we have to untaint return status register
+        int opcode = instr_get_opcode(where);
+        if (opcode == OP_strex ||
+            opcode == OP_strexb ||
+            opcode == OP_strexh)
+        {
+            reg_id_t rd = opnd_get_reg(instr_get_dst(where, 1));
+            reg_id_t srd = sreg1;
+            reg_id_t nullreg = sapp2;
+
+            // nullreg = 0
+            instrlist_meta_preinsert(ilist, where, XINST_CREATE_move(drcontext, opnd_create_reg(nullreg), OPND_CREATE_INT8(0)));
+
+            // get shadow register address of %rd% and place it to %srd%
+            drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
+
+            // write 0 to shadow value of %rd%
+            instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte // str nullreg, [strd]
+                                     (drcontext, OPND_CREATE_MEM8(srd, 0), opnd_create_reg(nullreg)));
+        }
+    }
 }
 
 static void
 propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
-    strd reg1, reg2, reg3, [mem2]  
+    strd reg1, reg2, [mem2]  
 
     We need to save the tag value stored in 
-    shadow registers of reg2 and reg3 to shadow address of [mem2] 
+    shadow registers of reg2 and reg3 to shadow addresses of [mem2] and [mem2 + 4] 
 */
 {
-    // what_are_dsts(where);
+    opnd_t mem2 = instr_get_dst(where, 0);
+    if (opnd_is_base_disp(mem2))
+    {
+        auto sreg1 = drreg_reservation{ilist, where};
+        auto sapp2 = drreg_reservation{ilist, where};
+        auto sapp2n = drreg_reservation{ilist, where};
+
+        reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
+        reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 1));
+
+        // dereference the memory address at mem2 and store the result to %sapp2% register
+        drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
+
+        // get next 4 bytes after [mem2]
+        instrlist_meta_preinsert(ilist, where, XINST_CREATE_add_2src // sapp2n = sapp2 + 4
+                                 (drcontext, opnd_create_reg(sapp2n), opnd_create_reg(sapp2), OPND_CREATE_INT8(4)));
+
+        // get shadow memory address of [mem2] and place it to %sapp2%
+        drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
+
+        // get value of shadow register of reg1 and place it to %sreg1%
+        drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
+
+        // write the value of reg1 to [mem2] shadow address
+        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str sreg1, [sapp2]
+                                     (drcontext, OPND_CREATE_MEM8(sapp2, 0), opnd_create_reg(sreg1)));
+
+        // get shadow memory address of [mem2 + 4] and place it to %sapp2n%
+        drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2n, sapp2);
+
+        // get value of shadow register of reg2 and place it to %sreg1%
+        drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg1);
+
+        // write the shadow value of reg2 to [mem2 + 4] shadow address
+        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str sreg1, [sapp2n]
+                                     (drcontext, OPND_CREATE_MEM8(sapp2n, 0), opnd_create_reg(sreg1)));
+
+        // if it's a strexd then we have to untaint return status register
+        if (instr_get_opcode(where) == OP_strexd)
+        {
+            reg_id_t rd = opnd_get_reg(instr_get_dst(where, 1));
+            reg_id_t srd = sreg1;
+            reg_id_t nullreg = sapp2;
+
+            // nullreg = 0
+            instrlist_meta_preinsert(ilist, where, XINST_CREATE_move(drcontext, opnd_create_reg(nullreg), OPND_CREATE_INT8(0)));
+
+            // get shadow register address of %rd% and place it to %srd%
+            drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
+
+            // write 0 to shadow value of %rd%
+            instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte // str nullreg, [strd]
+                                     (drcontext, OPND_CREATE_MEM8(srd, 0), opnd_create_reg(nullreg)));
+        }
+    }
 }
 
 static void
@@ -851,6 +938,8 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_strb:
     case OP_strh:
     case OP_strex:
+    case OP_strexb:
+    case OP_strexh:
 
     // thumb
     case OP_strt:
@@ -863,9 +952,6 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_strd:
     case OP_strexd:
 
-        /* For OP_strex, failure is written to a second dst operand,
-         * but this isn't controllable.
-         */
         propagate_strd(drcontext, tag, ilist, where);
         break;
 

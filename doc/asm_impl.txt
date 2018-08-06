@@ -31,19 +31,22 @@ OP_stmib: 1
 OP_stmda: 1
 OP_stmdb: 1
 
-// strXX r0, [r1, #imm]; 
+// strXX r0, [r1, #imm]; // strXX r0, [r1, r2]; 
 OP_str:    1
 OP_strb:   1
 OP_strh:   1
 OP_strt:   1
 OP_strbt:  1
 OP_strht:  1
+
+// strex r0, r1, [r2]; 
 OP_strex:  1
 OP_strexb: 1
 OP_strexh: 1
 
-OP_strd:  
-OP_strexd:  
+// strd r0, r1, r2, [r3]; 
+OP_strd:   1
+OP_strexd: 1 
 
 OP_mov:
 OP_mvn:

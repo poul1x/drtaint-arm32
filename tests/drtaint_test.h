@@ -11,22 +11,31 @@
 #define MAKE_TAINTED(mem, mem_sz) \
     assert(write(FD_APP_START_TRACE, mem, mem_sz) == DRTAINT_SUCCESS)
 
-#define TEST_ASSERT(q)                                         \
-if (!(q))                                                       \
-{                                                               \
-    printf("Line %d: assertion %s failed\n", __LINE__, #q);     \
-    return false;                                               \
-}             
+#define TEST_ASSERT(q)                                          \
+    if (!(q))                                                   \
+    {                                                           \
+        printf("Line %d: assertion %s failed\n", __LINE__, #q); \
+        return false;                                           \
+    }
 
 #define CLEAR(mem, mem_sz) my_zero_memory(mem, mem_sz)
 
 typedef bool (*testfunc)(void);
 
+typedef struct _Test
+{
+    const char *name;
+    testfunc run;
+
+} Test;
+
+Test *find_test(const char *name);
+
 void run_all_tests();
 
 void show_all_tests();
 
-void my_zero_memory(void* dst, int size);
+void my_zero_memory(void *dst, int size);
 
 void usage();
 
@@ -43,7 +52,6 @@ bool test_array();
 bool test_untaint();
 bool test_untaint_stack();
 
-
 bool test_asm_ldr_imm();
 bool test_asm_ldr_imm_ex();
 bool test_asm_ldr_reg();
@@ -58,6 +66,10 @@ bool test_asm_ldm_ex_w();
 
 bool test_asm_str_imm();
 bool test_asm_str_reg();
+bool test_asm_strex();
+bool test_asm_strd_imm();
+bool test_asm_strd_reg();
+bool test_asm_strexd();
 
 bool test_asm_stm();
 bool test_asm_stm_w();
