@@ -11,12 +11,16 @@
 #define MAKE_TAINTED(mem, mem_sz) \
     assert(write(FD_APP_START_TRACE, mem, mem_sz) == DRTAINT_SUCCESS)
 
-#define TEST_ASSERT(q)                                          \
-    if (!(q))                                                   \
-    {                                                           \
-        printf("Line %d: assertion %s failed\n", __LINE__, #q); \
-        return false;                                           \
-    }
+#define TEST_START bool _status_ = true
+#define TEST_END return _status_
+#define TEST_ASSERT(q)              \
+    if (!(q))                       \
+    {                               \
+        printf("%s: failed\n", #q); \
+        _status_ = false;           \
+    }                               \
+    else                            \
+        printf("%s: ok\n", #q)
 
 #define CLEAR(mem, mem_sz) my_zero_memory(mem, mem_sz)
 
@@ -75,3 +79,10 @@ bool test_asm_stm();
 bool test_asm_stm_w();
 bool test_asm_stm_ex();
 bool test_asm_stm_ex_w();
+
+bool test_asm_mov_reg();
+bool test_asm_mov_imm();
+bool test_asm_mov_ex();
+
+bool test_asm_arith3_reg();
+bool test_asm_arith3_imm();

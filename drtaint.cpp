@@ -220,9 +220,7 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 
         // get [mem2 + 4] address
         instrlist_meta_preinsert(ilist, where, XINST_CREATE_add_2src // add sapp2n, sapp2, #4
-                                 (drcontext, opnd_create_reg(sapp2n),
-                                  opnd_create_reg(sapp2), 
-                                  OPND_CREATE_INT8(4)));  
+                                 (drcontext, opnd_create_reg(sapp2n), opnd_create_reg(sapp2), OPND_CREATE_INT8(4)));
 
         // get shadow memory addresses of reg1 and [mem2] and place them to %sreg1% and %sapp2%
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
@@ -430,31 +428,6 @@ propagate_mov_imm_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte  // str simm2, [sreg2]
                              (drcontext, OPND_CREATE_MEM8(sreg2, 0), // dst_mem: sreg2
                               opnd_create_reg(simm2)));              // src_reg: simm2
-}
-
-static void
-propagate_arith_imm_reg(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
-/*
-    [add | sub | ... ] reg2, imm, reg1
-
-    Need to mark reg2 tainted
-*/
-{
-    auto sreg2 = drreg_reservation{ilist, where};
-    auto sreg1 = drreg_reservation{ilist, where};
-    reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 0));
-    reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 1));
-
-    // get value of shadow register of reg1 and place it to %sreg1%
-    drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
-
-    // get shadow register address of reg2 and place it to %sreg2%
-    drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
-
-    // write the result to shadow register of reg2
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte  // str sreg1, [sreg2]
-                             (drcontext, OPND_CREATE_MEM8(sreg2, 0), // dst_mem: sreg2
-                              opnd_create_reg(sreg1)));              // src_reg: sreg1
 }
 
 static void
@@ -958,11 +931,9 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_mov:
     case OP_mvn:
     case OP_mvns:
+    case OP_movs:
     case OP_movw:
     case OP_movt:
-    case OP_movs:
-    case OP_rrx:
-    case OP_rrxs:
 
         if (opnd_is_reg(instr_get_src(where, 0)))
             propagate_mov_reg_src(drcontext, tag, ilist, where);
@@ -970,6 +941,8 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
             propagate_mov_imm_src(drcontext, tag, ilist, where);
         break;
 
+    case OP_rrx:
+    case OP_rrxs:
     case OP_sbfx:
     case OP_ubfx:
     case OP_uxtb:
@@ -978,6 +951,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_sxth:
     case OP_rev:
     case OP_rev16:
+    case OP_clz:
 
         /* These aren't mov's per se, but they only accept 1
          * reg source and 1 reg dest.
@@ -985,18 +959,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         propagate_mov_reg_src(drcontext, tag, ilist, where);
         break;
 
-    case OP_sel:
-    case OP_clz:
-
-        /* These aren't mov's per se, but they only accept 1
-         * reg source and 1 dest.
-         */
-        if (opnd_is_reg(instr_get_src(where, 0)))
-            propagate_mov_reg_src(drcontext, tag, ilist, where);
-        else
-            propagate_mov_imm_src(drcontext, tag, ilist, where);
-        break;
-
+    // op rd, r1, op2
     case OP_adc:
     case OP_adcs:
     case OP_add:
@@ -1016,8 +979,6 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_bics:
     case OP_eor:
     case OP_eors:
-    case OP_mul:
-    case OP_muls:
     case OP_orr:
     case OP_ror:
     case OP_orrs:
@@ -1028,11 +989,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_asr:
     case OP_asrs:
     case OP_orn:
-    case OP_uadd8:
-    case OP_uqsub8:
 
-        DR_ASSERT(instr_num_srcs(where) == 2 || instr_num_srcs(where) == 4);
-        DR_ASSERT(instr_num_dsts(where) == 1);
         if (opnd_is_reg(instr_get_src(where, 0)))
         {
             if (opnd_is_reg(instr_get_src(where, 1)))
@@ -1040,10 +997,21 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
             else
                 propagate_arith_reg_imm(drcontext, tag, ilist, where);
         }
-        else if (opnd_is_reg(instr_get_src(where, 1)))
-            propagate_arith_imm_reg(drcontext, tag, ilist, where);
         else
-            DR_ASSERT(false); /* add reg, imm, imm does not make sense */
+            DR_ASSERT(false);
+        break;
+
+    // op rd, r1, r2
+    case OP_mul:
+    case OP_muls:
+    case OP_uadd8:
+    case OP_uqsub8:
+
+        DR_ASSERT(opnd_is_reg(instr_get_src(where, 0)) &&
+                  opnd_is_reg(instr_get_src(where, 1)) &&
+                  opnd_is_reg(instr_get_dst(where, 0)));
+
+        propagate_arith_reg_reg(drcontext, tag, ilist, where);
         break;
 
     case OP_smull:

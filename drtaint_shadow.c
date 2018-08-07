@@ -99,7 +99,7 @@ bool drtaint_shadow_insert_app_to_shadow(void *drcontext, instrlist_t *ilist, in
 bool drtaint_shadow_get_app_taint(void *drcontext, app_pc app, byte *result)
 /*
     Read shadow value at address %app_pc% and store it to %result%
-    Note: 1 real memory byte = 4 shadow memory bytes
+    Note: 4 real memory bytes = 1 shadow memory byte
 */
 {
     size_t sz = 1;
@@ -112,7 +112,7 @@ bool drtaint_shadow_get_app_taint(void *drcontext, app_pc app, byte *result)
 bool drtaint_shadow_set_app_taint(void *drcontext, app_pc app, byte result)
 /*
     Translate address of %app_pc% to shadow address and write there %result% value
-    Note: 1 real memory byte = 4 shadow memory bytes
+    Note: 4 real memory bytes = 1 shadow memory byte
 */
 {
     size_t sz = 1;

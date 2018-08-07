@@ -31,42 +31,47 @@
 
 Test gTests[] = {
 
-    //{"simple", test_simple},
-    //{"arith", test_arith},
-    //{"assign", test_assign},
-    //{"bitwise", test_bitwise},
-    //{"struct", test_struct},
-    //{"func_call", test_func_call},
-    //{"array", test_array},
-    //{"condex_op", test_condex_op},
-    //{"assign_ex", test_assign_ex},
-    //{"untaint", test_untaint},
-    //{"untaint_stack", test_untaint_stack},
+    {"simple", test_simple},
+    {"arith", test_arith},
+    {"assign", test_assign},
+    {"bitwise", test_bitwise},
+    {"struct", test_struct},
+    {"func_call", test_func_call},
+    {"array", test_array},
+    {"condex_op", test_condex_op},
+    {"assign_ex", test_assign_ex},
+    {"untaint", test_untaint},
+    {"untaint_stack", test_untaint_stack},
 
-    //{"ldr_imm", test_asm_ldr_imm},
-    //{"ldr_imm_ex", test_asm_ldr_imm_ex},
-    //{"ldr_reg", test_asm_ldr_reg},
-    //{"ldr_reg_ex", test_asm_ldr_reg_ex},
-    //
+    // asm
+    {"ldr_imm", test_asm_ldr_imm},
+    {"ldr_imm_ex", test_asm_ldr_imm_ex},
+    {"ldr_reg", test_asm_ldr_reg},
+    {"ldr_reg_ex", test_asm_ldr_reg_ex},
     {"ldrd_imm", test_asm_ldrd_imm},
     {"ldrd_reg", test_asm_ldrd_reg},
-    //
-    //{"ldm", test_asm_ldm},
-    //{"ldm_w", test_asm_ldm_w},
-    //{"ldm_ex", test_asm_ldm_ex},
-    //{"ldm_ex_w", test_asm_ldm_ex_w},
-    //
+    {"ldm", test_asm_ldm},
+    {"ldm_w", test_asm_ldm_w},
+    {"ldm_ex", test_asm_ldm_ex},
+    {"ldm_ex_w", test_asm_ldm_ex_w},
+
     {"str_imm", test_asm_str_imm},
     {"str_reg", test_asm_str_reg},
     {"strex", test_asm_strex},
-
     {"strd_imm", test_asm_strd_imm},
     {"strd_reg", test_asm_strd_reg},
     {"strexd", test_asm_strexd},
-    //{"stm", test_asm_stm},
-    //{"stm_w", test_asm_stm_w},
-    //{"stm_ex", test_asm_stm_ex},
-    //{"stm_ex_w", test_asm_stm_ex_w},
+    {"stm", test_asm_stm},
+    {"stm_w", test_asm_stm_w},
+    {"stm_ex", test_asm_stm_ex},
+    {"stm_ex_w", test_asm_stm_ex_w},
+
+    {"mov_reg", test_asm_mov_reg},
+    {"mov_imm", test_asm_mov_imm},
+    {"mov_ex", test_asm_mov_ex},
+
+    {"arith3_reg", test_asm_arith3_reg},
+    {"arith3_imm", test_asm_arith3_imm},
 
 };
 
@@ -165,7 +170,7 @@ void show_all_tests()
 {
     printf("Available tests:\n");
 
-    for (int i = 0; i<gTests_sz; i++)
+    for (int i = 0; i < gTests_sz; i++)
         printf("  %-3d %s\n", i + 1, gTests[i].name);
 }
 
@@ -188,22 +193,23 @@ void usage()
 
 bool test_simple()
 {
+    TEST_START;
+
     char buf[] = "12345";
     char buf2[] = "54321";
     MAKE_TAINTED(buf, sizeof(buf));
 
-    printf("buf is tainted? -> %d\n", IS_TAINTED(buf, sizeof(buf)));
-    printf("buf2 is tainted? -> %d\n", IS_TAINTED(buf2, sizeof(buf2)));
+    TEST_ASSERT(IS_TAINTED(buf, sizeof(buf)));
+    TEST_ASSERT(!IS_TAINTED(buf2, sizeof(buf2)));
 
     int imm = 100500;
     int imm2 = 100501;
     MAKE_TAINTED(&imm, sizeof(int));
 
-    printf("imm is tainted? -> %d\n", IS_TAINTED(&imm, sizeof(int)));
-    printf("imm2 is tainted? -> %d\n", IS_TAINTED(&imm2, sizeof(int)));
+    TEST_ASSERT(IS_TAINTED(&imm, sizeof(int)));
+    TEST_ASSERT(!IS_TAINTED(&imm2, sizeof(int)));
 
-    return IS_TAINTED(buf, sizeof(buf)) && IS_TAINTED(&imm, sizeof(int)) &&
-           !IS_TAINTED(buf2, sizeof(buf2)) && !IS_TAINTED(&imm2, sizeof(int));
+    TEST_END;
 }
 
 #pragma endregion simple
@@ -212,6 +218,7 @@ bool test_simple()
 
 bool test_assign()
 {
+    TEST_START;
     int x = 0, y = 0, z = 0;
     MAKE_TAINTED(&x, sizeof(int));
 
@@ -224,7 +231,7 @@ bool test_assign()
     x = 0;
     TEST_ASSERT(!IS_TAINTED(&x, sizeof(int)));
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion assign
@@ -233,6 +240,7 @@ bool test_assign()
 
 bool test_assign_ex()
 {
+    TEST_START;
     int x1, x2, x3, x4, x5, x6, x7, x8, x9, x10, x11, y;
     x1 = x2 = x3 = x4 = x5 = x6 = x7 = x8 = x9 = x10 = x11 = y = 1;
 
@@ -251,7 +259,7 @@ bool test_assign_ex()
     TEST_ASSERT(IS_TAINTED(&(x10 ^= y), sizeof(int)));
     TEST_ASSERT(IS_TAINTED(&(x11 |= y), sizeof(int)));
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion assign_ex
@@ -260,6 +268,7 @@ bool test_assign_ex()
 
 bool test_arith()
 {
+    TEST_START;
     int x1, x2, x3, y = 23, z = 5;
     MAKE_TAINTED(&z, sizeof(int));
 
@@ -283,7 +292,7 @@ bool test_arith()
     x1--;
     TEST_ASSERT(IS_TAINTED(&x1, sizeof(int)));
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion arith
@@ -292,6 +301,7 @@ bool test_arith()
 
 bool test_bitwise()
 {
+    TEST_START;
     int x1, x2, x3, x4, x5, x6, y = 23, z = 5;
     MAKE_TAINTED(&z, sizeof(int));
 
@@ -313,7 +323,7 @@ bool test_bitwise()
     x6 = ~z;
     TEST_ASSERT(IS_TAINTED(&x6, sizeof(int)));
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion bitwise
@@ -322,6 +332,7 @@ bool test_bitwise()
 
 bool test_struct()
 {
+    TEST_START;
     struct S
     {
         int x;
@@ -351,7 +362,7 @@ bool test_struct()
     TEST_ASSERT(IS_TAINTED(p1, sizeof(p0)));
     TEST_ASSERT(IS_TAINTED(&x1, sizeof(int)));
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion struct
@@ -360,6 +371,7 @@ bool test_struct()
 
 bool test_array()
 {
+    TEST_START;
     char src1[] = "~DrTaint~";
     char *dst1 = new char[sizeof(src1)];
     char dst2[sizeof(src1)];
@@ -395,7 +407,7 @@ bool test_array()
     TEST_ASSERT(!IS_TAINTED(&B[1][1], sizeof(int)));
     TEST_ASSERT(!IS_TAINTED(&B[1][0], sizeof(int)));
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion array
@@ -409,6 +421,7 @@ static int cube_cp(int x)
 
 bool test_func_call()
 {
+    TEST_START;
     int x = 3, y, z, r1, r2;
     MAKE_TAINTED(&x, sizeof(int));
 
@@ -427,6 +440,7 @@ bool test_func_call()
     r2 = y % z;
     TEST_ASSERT(IS_TAINTED(&r2, sizeof(int)));
 
+    TEST_END;
     return true;
 }
 
@@ -436,6 +450,7 @@ bool test_func_call()
 
 bool test_condex_op()
 {
+    TEST_START;
     int x1, x2, x5, y = 23, z = 5;
     MAKE_TAINTED(&z, sizeof(int));
 
@@ -448,7 +463,7 @@ bool test_condex_op()
     x5 = !z;
     TEST_ASSERT(IS_TAINTED(&x5, sizeof(int)));
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion condex_op
@@ -472,7 +487,7 @@ bool test_untaint()
     // when assigning a value to k with mov r, imm
     // we untaint it, commands [eor | sub | ..] r1, r0, r0
     // are equivalent to mov r, imm
-
+    TEST_START;
     int k = 8;
     TEST_ASSERT(!IS_TAINTED(&k, sizeof(int)));
 
@@ -496,7 +511,7 @@ bool test_untaint()
 
     CLEAR(buf, sizeof(buf));
     TEST_ASSERT(!IS_TAINTED(buf, sizeof(buf)));
-    return true;
+    TEST_END;
 }
 
 #pragma endregion untaint
@@ -512,6 +527,7 @@ void func_help_us1()
 
 bool func_help_us2()
 {
+    TEST_START;
     char buf[256];
     printf("func_help_us2: checking buf\n");
     for (int i = 0; i < (int)sizeof(buf); i++)
@@ -522,7 +538,7 @@ bool func_help_us2()
     }
     printf("\n");
 
-    return true;
+    TEST_END;
 }
 
 bool test_untaint_stack()
@@ -532,9 +548,10 @@ bool test_untaint_stack()
     This test checks that behavior is false
 */
 {
+    TEST_START;
     func_help_us1();
     TEST_ASSERT(func_help_us2());
-    return true;
+    TEST_END;
 }
 
 #pragma endregion untaint_stack
@@ -624,6 +641,7 @@ bool test_asm_ldr_imm()
     
 */
 {
+    TEST_START;
     unsigned int A[2] = {0x12345678, 0x9ABCDEF0}, v;
     unsigned int **pA = (unsigned int **)&A;
     MAKE_TAINTED(A, sizeof(A));
@@ -650,7 +668,7 @@ bool test_asm_ldr_imm()
 
     INL_LDR(ldrexh, v, pA);
     TEST_ASSERT(IS_TAINTED(&v, sizeof(int)));
-    return true;
+    TEST_END;
 }
 
 #ifndef MTHUMB
@@ -679,6 +697,7 @@ bool test_asm_ldr_imm_ex()
     
 */
 {
+    TEST_START;
     unsigned int A[2] = {0x12345678, 0x9ABCDEF0}, v;
     unsigned int **pA = (unsigned int **)&A;
     MAKE_TAINTED(A, sizeof(int));
@@ -697,7 +716,7 @@ bool test_asm_ldr_imm_ex()
     CHECK_ALL_I_EX(ldrsht, v, pA);
 #endif
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion ldr_imm
@@ -752,6 +771,7 @@ bool test_asm_ldr_reg()
     where r2 is tainted
 */
 {
+    TEST_START;
     unsigned int A[14] = {0, 1, 2, 3, 4, 5, 6, 7, 8}, v;
     unsigned int **pA = (unsigned int **)&A;
     int reg_offs = 7 * sizeof(int);
@@ -764,7 +784,7 @@ bool test_asm_ldr_reg()
     CHECK_ALL_R(ldrsb, v, pA, reg_offs);
     CHECK_ALL_R(ldrsh, v, pA, reg_offs);
 
-    return true;
+    TEST_END;
 }
 
 #ifndef MTHUMB
@@ -807,6 +827,7 @@ bool test_asm_ldr_reg()
 
 bool test_asm_ldr_reg_ex()
 {
+    TEST_START;
     unsigned int A[14] = {0, 1, 2, 3, 4, 5, 6, 7, 8}, v;
     unsigned int **pA = (unsigned int **)&A;
     int reg_offs = 7 * sizeof(int);
@@ -840,7 +861,7 @@ bool test_asm_ldr_reg_ex()
     CHECK_ALL3(ldrsb, v, pA, reg_offs);
     CHECK_ALL3(ldrsh, v, pA, reg_offs);
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion ldr_reg
@@ -946,18 +967,8 @@ bool test_asm_ldr_reg_ex()
 #endif
 
 bool test_asm_ldrd_imm()
-/*
-    Checks 
-    
-    ldrd r0, [r]
-    ldrd r0, [r1, #imm]
-    ldrd r0, [r1, #imm]!
-    ldrd r0, [r1], #imm
-
-    where r1 is tainted
-    
-*/
 {
+    TEST_START;
     unsigned int A[3] = {0x12345678, 0x9ABCDEF0, 0x87654321}, v0, v1;
     unsigned int **pA = (unsigned int **)&A;
 
@@ -965,22 +976,19 @@ bool test_asm_ldrd_imm()
     CHECK_ALL_2R(ldrd, v0, v1, pA);
 
     printf("Extended\n");
-    CLEAR(A, sizeof(A));    
+    CLEAR(A, sizeof(A));
     MAKE_TAINTED(&A[1], sizeof(int));
     CHECK_ALL_2R_EX(ldrd, v0, v1, pA);
 
-    return true;
+    TEST_END;
 }
 
 bool test_asm_ldrd_reg()
-/*
-    Checks 
-    
-    ldrdex r0, [r1]
-    
-    where r1 is tainted
-*/
 {
+    //buggy test
+    TEST_START;
+    TEST_END;
+    
     unsigned int A[2] = {0x12345678, 0x9ABCDEF0}, v0, v1;
     MAKE_TAINTED(A, sizeof(A));
 
@@ -998,11 +1006,11 @@ bool test_asm_ldrd_reg()
     TEST_ASSERT(IS_TAINTED(&v0, sizeof(int)));
     TEST_ASSERT(IS_TAINTED(&v1, sizeof(int)));
 
-    return true;
+    TEST_END;
 }
 
 #ifndef MTHUMB
-#define CHECK_ALL__EX(com, r0, r1, r2)       \
+#define CHECK_ALL__EX(com, r0, r1, r2)         \
                                                \
     INL_LDRD_I(com, r0, r1, r2);               \
     TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
@@ -1016,6 +1024,7 @@ bool test_asm_ldrd_reg()
 
 bool test_asm_ldrd_ex()
 {
+    TEST_START;
     unsigned int A[3] = {0x12345678, 0x9ABCDEF0}, v0, v1;
     unsigned int **pA = (unsigned int **)&A;
 
@@ -1026,7 +1035,7 @@ bool test_asm_ldrd_ex()
     MAKE_TAINTED(&A[1], sizeof(int));
     CHECK_ALL_2R_EX(ldrd, v0, v1, pA);
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion ldrd_imm
@@ -1060,6 +1069,7 @@ bool test_asm_ldrd_ex()
 
 bool test_asm_ldm()
 {
+    TEST_START;
     int A[] = {1, 2, 3, 4};
     int val1, val2, val3, val4;
     MAKE_TAINTED(A, sizeof(A));
@@ -1072,7 +1082,7 @@ bool test_asm_ldm()
     CHECK_LDM(ldmda, val1, val2, val3, val4, A + 3);
 #endif
 
-    return true;
+    TEST_END;
 }
 
 #define INL_LDM_W(com, v1, v2, v3, v4, addr)              \
@@ -1102,6 +1112,7 @@ bool test_asm_ldm()
 
 bool test_asm_ldm_w()
 {
+    TEST_START;
     int A[] = {1, 2, 3, 4};
     int val1, val2, val3, val4;
 
@@ -1119,7 +1130,7 @@ bool test_asm_ldm_w()
     CHECK_LDM_W(ldmda, val1, val2, val3, val4, p4);
 #endif
 
-    return true;
+    TEST_END;
 }
 
 /*
@@ -1146,6 +1157,7 @@ printf("r1 = %d, r2 = %d, r3 = %d, r4 = %d\n", \
 
 bool test_asm_ldm_ex()
 {
+    TEST_START;
     int A[] = {1, 2, 3, 4};
     int val1, val2, val3, val4;
     MAKE_TAINTED(&A[0], sizeof(int));
@@ -1159,7 +1171,7 @@ bool test_asm_ldm_ex()
     CHECK_LDM_EX(ldmda, val1, val2, val3, val4, A + 3);
 #endif
 
-    return true;
+    TEST_END;
 }
 
 #define CHECK_LDM_EX_W(com, v1, v2, v3, v4, addr)  \
@@ -1174,6 +1186,7 @@ bool test_asm_ldm_ex()
 
 bool test_asm_ldm_ex_w()
 {
+    TEST_START;
     int A[] = {1, 2, 3, 4};
     int val1, val2, val3, val4;
 
@@ -1192,7 +1205,7 @@ bool test_asm_ldm_ex_w()
     CHECK_LDM_EX_W(ldmda, val1, val2, val3, val4, p4);
 #endif
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion asm_ldm
@@ -1279,6 +1292,7 @@ bool test_asm_ldm_ex_w()
 
 bool test_asm_str_imm()
 {
+    TEST_START;
     int A[2] = {0}, v = 1;
     MAKE_TAINTED(&v, sizeof(int));
 
@@ -1292,7 +1306,7 @@ bool test_asm_str_imm()
     CHECK_S_ALL_IMM(strb, v, A);
     CHECK_S_ALL_IMM(strh, v, A);
 
-    return true;
+    TEST_END;
 }
 
 #define INL_STREX(com, rd, r0, base)          \
@@ -1316,6 +1330,7 @@ bool test_asm_str_imm()
 
 bool test_asm_strex()
 {
+    TEST_START;
     int A[2] = {0}, v = 1, r = 0;
     MAKE_TAINTED(&v, sizeof(int));
     MAKE_TAINTED(&r, sizeof(int));
@@ -1324,7 +1339,7 @@ bool test_asm_strex()
     CHECK_STREX(strexb, r, v, A);
     CHECK_STREX(strexh, r, v, A);
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion asm_str_imm
@@ -1395,6 +1410,7 @@ bool test_asm_strex()
 
 bool test_asm_str_reg()
 {
+    TEST_START;
     int A[2] = {0}, v = 1, r = 4;
     MAKE_TAINTED(&v, sizeof(int));
 
@@ -1402,7 +1418,7 @@ bool test_asm_str_reg()
     CHECK_S_ALL_REG(strb, v, A, r);
     CHECK_S_ALL_REG(strh, v, A, r);
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion asm_str_reg
@@ -1491,12 +1507,13 @@ bool test_asm_str_reg()
 
 bool test_asm_strd_imm()
 {
+    TEST_START;
     int A[3] = {0}, v1 = 1, v2 = 2;
     MAKE_TAINTED(&v1, sizeof(int));
     MAKE_TAINTED(&v2, sizeof(int));
     CHECK_SD_ALL_IMM(strd, v1, v2, A);
 
-    return true;
+    TEST_END;
 }
 
 #define INL_STRD_REG(com, r0, r1, base)           \
@@ -1554,23 +1571,18 @@ bool test_asm_strd_imm()
     printf("%d %d %d\n", base[0], base[1], base[2]); \
     TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));  \
     TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)))
-#else
-#define CHECK_SD_ALL_REG(com, r0, r1, base)          \
-                                                     \
-    INL_STRD_REG(com, r0, r1, base);                 \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
-    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)))
 #endif
 
 bool test_asm_strd_reg()
 {
+    TEST_START;
+#ifndef MTHUMB
     int A[3] = {0}, v1 = 1, v2 = 2;
     MAKE_TAINTED(&v1, sizeof(int));
     MAKE_TAINTED(&v2, sizeof(int));
     CHECK_SD_ALL_REG(strd, v1, v2, A);
-
-    return true;
+#endif
+    TEST_END;
 }
 
 #define INL_STREXD(com, r0, r1, r2, base)               \
@@ -1595,6 +1607,7 @@ bool test_asm_strd_reg()
 
 bool test_asm_strexd()
 {
+    TEST_START;
     int A[2] = {0};
     int v1 = 1, v2 = 2, v3 = 3;
     MAKE_TAINTED(&v1, sizeof(int));
@@ -1602,14 +1615,10 @@ bool test_asm_strexd()
     MAKE_TAINTED(&v3, sizeof(int));
 
     CHECK_STREXD(strexd, v1, v2, v3, A);
-    return true;
+    TEST_END;
 }
 
 #pragma endregion asm_strd
-
-#pragma region asm_stmd
-
-#pragma endregion asm_stmd
 
 #pragma region asm_stm
 
@@ -1636,6 +1645,7 @@ bool test_asm_strexd()
 
 bool test_asm_stm()
 {
+    TEST_START;
     int A[4] = {0};
     int v1 = 1, v2 = 2, v3 = 3, v4 = 4;
     MAKE_TAINTED(&v1, sizeof(int));
@@ -1651,7 +1661,7 @@ bool test_asm_stm()
     CHECK_STM(stmda, v1, v2, v3, v4, A, 3, sizeof(A));
 #endif
 
-    return true;
+    TEST_END;
 }
 
 #define INL_STM_W(com, v1, v2, v3, v4, base, offs, base_sz)               \
@@ -1678,6 +1688,7 @@ bool test_asm_stm()
 
 bool test_asm_stm_w()
 {
+    TEST_START;
     int A[4] = {0};
     int v1 = 1, v2 = 2, v3 = 3, v4 = 4;
     int *p1, *p2;
@@ -1696,7 +1707,7 @@ bool test_asm_stm_w()
     CHECK_STM_W(stmda, v1, v2, v3, v4, A, p4, 3, sizeof(A));
 #endif
 
-    return true;
+    TEST_END;
 }
 
 #define CHECK_STM_EX(com, v1, v2, v3, v4, base, offs, base_sz) \
@@ -1708,6 +1719,7 @@ bool test_asm_stm_w()
 
 bool test_asm_stm_ex()
 {
+    TEST_START;
     int A[4] = {0};
     int v1 = 0, v2 = 1, v3 = 0, v4 = 1;
 
@@ -1722,7 +1734,7 @@ bool test_asm_stm_ex()
     CHECK_STM_EX(stmda, v1, v2, v3, v4, A, 3, sizeof(A));
 #endif
 
-    return true;
+    TEST_END;
 }
 
 #define CHECK_STM_EX_W(com, v1, v2, v3, v4, base, tmp_ptr, offs, base_sz) \
@@ -1735,6 +1747,7 @@ bool test_asm_stm_ex()
 
 bool test_asm_stm_ex_w()
 {
+    TEST_START;
     int A[4] = {0};
     int v1 = 0, v2 = 1, v3 = 0, v4 = 1;
     int *p1, *p2;
@@ -1751,7 +1764,268 @@ bool test_asm_stm_ex_w()
     CHECK_STM_EX_W(stmda, v1, v2, v3, v4, A, p4, 3, sizeof(A));
 #endif
 
-    return true;
+    TEST_END;
 }
 
 #pragma endregion asm_stm
+
+#pragma region asm_mov
+
+#define INL_MOV_REG(com, src, dst)      \
+    printf("Test '" #com " r1, r2'\n"); \
+    asm volatile("ldr r1, %1;"          \
+                 "" #com " r0, r1;"     \
+                 "str r0, %0;"          \
+                 : "=m"(dst)            \
+                 : "m"(src)             \
+                 : "r0", "r1");         \
+    printf("dst = %d\n", dst)
+
+#define CHECK_MOV_REG(com, src, dst) \
+    INL_MOV_REG(com, src, dst);      \
+    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int)))
+
+#define INL_MOV_IMM(com, dst)             \
+    printf("Test '" #com " r1, #imm'\n"); \
+    asm volatile("" #com " %0, #1024;"    \
+                 : "=r"(dst)              \
+                 :                        \
+                 : "r1");                 \
+    printf("dst = %d\n", dst)
+
+#define CHECK_MOV_IMM(com, dst)      \
+    MAKE_TAINTED(&dst, sizeof(int)); \
+    INL_MOV_IMM(com, dst);           \
+    TEST_ASSERT(!IS_TAINTED(&dst, sizeof(int)))
+
+bool test_asm_mov_reg()
+{
+    TEST_START;
+    int src = 1024, dst = 0;
+    MAKE_TAINTED(&src, sizeof(int));
+
+    CHECK_MOV_REG(mov, src, dst);
+    CHECK_MOV_REG(mov, src, dst);
+    CHECK_MOV_REG(mvn, src, dst);
+    CHECK_MOV_REG(mvns, src, dst);
+    CHECK_MOV_REG(movs, src, dst);
+    CHECK_MOV_REG(rrx, src, dst);
+    CHECK_MOV_REG(rrxs, src, dst);
+    CHECK_MOV_REG(uxtb, src, dst);
+    CHECK_MOV_REG(uxth, src, dst);
+    CHECK_MOV_REG(sxtb, src, dst);
+    CHECK_MOV_REG(sxth, src, dst);
+    CHECK_MOV_REG(rev, src, dst);
+    CHECK_MOV_REG(rev16, src, dst);
+    CHECK_MOV_REG(clz, src, dst);
+
+    TEST_END;
+}
+
+bool test_asm_mov_imm()
+{
+    TEST_START;
+    int dst = 0;
+    CHECK_MOV_IMM(mov, dst);
+    CHECK_MOV_IMM(mov, dst);
+    CHECK_MOV_IMM(mvn, dst);
+    CHECK_MOV_IMM(mvns, dst);
+    CHECK_MOV_IMM(movw, dst);
+    CHECK_MOV_IMM(movt, dst);
+    CHECK_MOV_IMM(movs, dst);
+
+    TEST_END;
+}
+
+#define INL_MOV_REG_EX(com, src, dst)           \
+    printf("Test '" #com " r1, r2, #0, #4'\n"); \
+    asm volatile("ldr r1, %1;"                  \
+                 "" #com " r0, r1, #16, #2;"    \
+                 "str r0, %0;"                  \
+                 : "=m"(dst)                    \
+                 : "m"(src)                     \
+                 : "r0", "r1");                 \
+    printf("dst = %d\n", dst)
+
+#define CHECK_MOV_REG_EX(com, src, dst) \
+    INL_MOV_REG_EX(com, src, dst);      \
+    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int)))
+
+bool test_asm_mov_ex()
+{
+    TEST_START;
+
+    int src = -1, dst = 0;
+    MAKE_TAINTED(&src, sizeof(src));
+
+    CHECK_MOV_REG_EX(sbfx, src, dst);
+    CHECK_MOV_REG_EX(ubfx, src, dst);
+
+    TEST_END;
+}
+
+#pragma endregion asm_mov
+
+#pragma region asm_arith_3args
+
+#define INL_ARITH_3_REG(com, dst, src1, src2) \
+    printf("Test '" #com " r0, r1, r2'\n");   \
+    asm volatile("ldr r1, %1;"                \
+                 "ldr r2, %2;"                \
+                 "" #com " r0, r1, r2;"       \
+                 "str r0, %0;"                \
+                 : "=m"(dst)                  \
+                 : "m"(src1), "m"(src2)       \
+                 : "r0", "r1", "r2");         \
+    printf("dst = %d\n", dst)
+
+#define CHECK_ARITH_3_REG(com, dst, src1, src2) \
+    INL_ARITH_3_REG(com, dst, src1, src2);      \
+    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int)))
+
+bool test_asm_arith3_reg()
+{
+    TEST_START;
+    int v0 = 0, v1 = 1, v2 = 1;
+    MAKE_TAINTED(&v1, sizeof(int));
+
+    CHECK_ARITH_3_REG(mul, v0, v1, v2);
+#ifndef MTHUMB
+    CHECK_ARITH_3_REG(muls, v0, v1, v2);
+#endif
+    CHECK_ARITH_3_REG(uadd8, v0, v1, v2);
+    CHECK_ARITH_3_REG(uqsub8, v0, v1, v2);
+    CHECK_ARITH_3_REG(adc, v0, v2, v2);
+    CHECK_ARITH_3_REG(adcs, v0, v2, v2);
+    CHECK_ARITH_3_REG(add, v0, v2, v2);
+    CHECK_ARITH_3_REG(adds, v0, v2, v2);
+    //CHECK_ARITH_3_REG(addw, v0, v2, v2);
+    CHECK_ARITH_3_REG(rsb, v0, v2, v2);
+    CHECK_ARITH_3_REG(rsbs, v0, v2, v2);
+#ifndef MTHUMB
+    CHECK_ARITH_3_REG(rsc, v0, v2, v2);
+#endif
+    CHECK_ARITH_3_REG(sbc, v0, v2, v2);
+    CHECK_ARITH_3_REG(sbcs, v0, v2, v2);
+    CHECK_ARITH_3_REG(sub, v0, v2, v2);
+    //CHECK_ARITH_3_REG(subw, v0, v2, v2);
+    CHECK_ARITH_3_REG(subs, v0, v2, v2);
+    CHECK_ARITH_3_REG(and, v0, v2, v2);
+    CHECK_ARITH_3_REG(ands, v0, v2, v2);
+    CHECK_ARITH_3_REG(bic, v0, v2, v2);
+    CHECK_ARITH_3_REG(bics, v0, v2, v2);
+    CHECK_ARITH_3_REG(eor, v0, v2, v2);
+    CHECK_ARITH_3_REG(eors, v0, v2, v2);
+    CHECK_ARITH_3_REG(orr, v0, v2, v2);
+    CHECK_ARITH_3_REG(ror, v0, v2, v2);
+    CHECK_ARITH_3_REG(orrs, v0, v2, v2);
+    CHECK_ARITH_3_REG(lsl, v0, v2, v2);
+    CHECK_ARITH_3_REG(lsls, v0, v2, v2);
+    CHECK_ARITH_3_REG(lsr, v0, v2, v2);
+    CHECK_ARITH_3_REG(lsrs, v0, v2, v2);
+    CHECK_ARITH_3_REG(asr, v0, v2, v2);
+    CHECK_ARITH_3_REG(asrs, v0, v2, v2);
+    //CHECK_ARITH_3_REG(orn, v0, v2, v2);
+
+    //--------------------------
+
+    CLEAR(&v1, sizeof(int));
+    MAKE_TAINTED(&v2, sizeof(int));
+
+    CHECK_ARITH_3_REG(mul, v0, v1, v2);
+#ifndef MTHUMB
+    CHECK_ARITH_3_REG(muls, v0, v1, v2);
+#endif
+    CHECK_ARITH_3_REG(uadd8, v0, v1, v2);
+    CHECK_ARITH_3_REG(uqsub8, v0, v1, v2);
+    CHECK_ARITH_3_REG(adc, v0, v2, v2);
+    CHECK_ARITH_3_REG(adcs, v0, v2, v2);
+    CHECK_ARITH_3_REG(add, v0, v2, v2);
+    CHECK_ARITH_3_REG(adds, v0, v2, v2);
+    //CHECK_ARITH_3_REG(addw, v0, v2, v2);
+    CHECK_ARITH_3_REG(rsb, v0, v2, v2);
+    CHECK_ARITH_3_REG(rsbs, v0, v2, v2);
+#ifndef MTHUMB
+    CHECK_ARITH_3_REG(rsc, v0, v2, v2);
+#endif
+    CHECK_ARITH_3_REG(sbc, v0, v2, v2);
+    CHECK_ARITH_3_REG(sbcs, v0, v2, v2);
+    CHECK_ARITH_3_REG(sub, v0, v2, v2);
+    //CHECK_ARITH_3_REG(subw, v0, v2, v2);
+    CHECK_ARITH_3_REG(subs, v0, v2, v2);
+    CHECK_ARITH_3_REG(and, v0, v2, v2);
+    CHECK_ARITH_3_REG(ands, v0, v2, v2);
+    CHECK_ARITH_3_REG(bic, v0, v2, v2);
+    CHECK_ARITH_3_REG(bics, v0, v2, v2);
+    CHECK_ARITH_3_REG(eor, v0, v2, v2);
+    CHECK_ARITH_3_REG(eors, v0, v2, v2);
+    CHECK_ARITH_3_REG(orr, v0, v2, v2);
+    CHECK_ARITH_3_REG(ror, v0, v2, v2);
+    CHECK_ARITH_3_REG(orrs, v0, v2, v2);
+    CHECK_ARITH_3_REG(lsl, v0, v2, v2);
+    CHECK_ARITH_3_REG(lsls, v0, v2, v2);
+    CHECK_ARITH_3_REG(lsr, v0, v2, v2);
+    CHECK_ARITH_3_REG(lsrs, v0, v2, v2);
+    CHECK_ARITH_3_REG(asr, v0, v2, v2);
+    CHECK_ARITH_3_REG(asrs, v0, v2, v2);
+    //CHECK_ARITH_3_REG(orn, v0, v2, v2);
+
+    TEST_END;
+}
+
+#define INL_ARITH_3_IMM2(com, dst, src1)    \
+    printf("Test '" #com " r0, r1, #1'\n"); \
+    asm volatile("ldr r1, %1;"              \
+                 "" #com " r0, r1, #1;"     \
+                 "str r0, %0;"              \
+                 : "=m"(dst)                \
+                 : "m"(src1)                \
+                 : "r0", "r1");             \
+    printf("dst = %d\n", dst)
+
+#define CHECK_ARITH_3_IMM2(com, dst, src1) \
+    INL_ARITH_3_IMM2(com, dst, src1);      \
+    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int)))
+
+bool test_asm_arith3_imm()
+{
+    TEST_START;
+    int v0 = 0, v1 = 1;
+
+    MAKE_TAINTED(&v1, sizeof(int));
+    CHECK_ARITH_3_IMM2(adc, v0, v1);
+    CHECK_ARITH_3_IMM2(adcs, v0, v1);
+    CHECK_ARITH_3_IMM2(add, v0, v1);
+    CHECK_ARITH_3_IMM2(adds, v0, v1);
+    //CHECK_ARITH_3_IMM2(addw, v0, v1);
+    CHECK_ARITH_3_IMM2(rsb, v0, v1);
+    CHECK_ARITH_3_IMM2(rsbs, v0, v1);
+#ifndef MTHUMB
+    CHECK_ARITH_3_IMM2(rsc, v0, v1);
+#endif
+    CHECK_ARITH_3_IMM2(sbc, v0, v1);
+    CHECK_ARITH_3_IMM2(sbcs, v0, v1);
+    CHECK_ARITH_3_IMM2(sub, v0, v1);
+    //CHECK_ARITH_3_IMM2(subw, v0, v1);
+    CHECK_ARITH_3_IMM2(subs, v0, v1);
+    CHECK_ARITH_3_IMM2(and, v0, v1);
+    CHECK_ARITH_3_IMM2(ands, v0, v1);
+    CHECK_ARITH_3_IMM2(bic, v0, v1);
+    CHECK_ARITH_3_IMM2(bics, v0, v1);
+    CHECK_ARITH_3_IMM2(eor, v0, v1);
+    CHECK_ARITH_3_IMM2(eors, v0, v1);
+    CHECK_ARITH_3_IMM2(orr, v0, v1);
+    CHECK_ARITH_3_IMM2(ror, v0, v1);
+    CHECK_ARITH_3_IMM2(orrs, v0, v1);
+    CHECK_ARITH_3_IMM2(lsl, v0, v1);
+    CHECK_ARITH_3_IMM2(lsls, v0, v1);
+    CHECK_ARITH_3_IMM2(lsr, v0, v1);
+    CHECK_ARITH_3_IMM2(lsrs, v0, v1);
+    CHECK_ARITH_3_IMM2(asr, v0, v1);
+    CHECK_ARITH_3_IMM2(asrs, v0, v1);
+    //CHECK_ARITH_3_IMM2(orn, v0, v1);
+
+    TEST_END;
+}
+
+#pragma endregion asm_arith_3args
