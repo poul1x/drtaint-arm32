@@ -12,7 +12,6 @@
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       bool for_trace, bool translating, void *user_data);
-
 static bool
 event_pre_syscall(void *drcontext, int sysnum);
 
@@ -163,42 +162,109 @@ typedef enum
 } opnd_sz_t;
 
 template <opnd_sz_t T>
-void
-load_meta_preinsert(void *drcontext, instrlist_t *ilist,
-                          instr_t *where, opnd_t dst_reg, opnd_t mem16)
+instr_t *instr_load(void *drcontext, opnd_t dst_reg, opnd_t mem)
 {
     DR_ASSERT_MSG(false, "Unreachable");
+    return NULL;
 }
 
 template <>
-void
-load_meta_preinsert<BYTE>(void *drcontext, instrlist_t *ilist,
-                          instr_t *where, opnd_t dst_reg, opnd_t mem16)
+instr_t *instr_load<BYTE>(void *drcontext, opnd_t dst_reg, opnd_t mem)
 {
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2, [sapp2]
-                             (drcontext, dst_reg, mem16));
+    return XINST_CREATE_load_1byte(drcontext, dst_reg, mem);
 }
 
 template <>
-void
-load_meta_preinsert<HALF>(void *drcontext, instrlist_t *ilist,
-                          instr_t *where, opnd_t dst_reg, opnd_t mem16)
+instr_t *instr_load<HALF>(void *drcontext, opnd_t dst_reg, opnd_t mem)
 {
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_2bytes // ldr sapp2, [sapp2]
-                             (drcontext, dst_reg, mem16));
+    return XINST_CREATE_load_2bytes(drcontext, dst_reg, mem);
 }
 
 template <>
-void
-load_meta_preinsert<WORD>(void *drcontext, instrlist_t *ilist,
-                          instr_t *where, opnd_t dst_reg, opnd_t mem16)
+instr_t *instr_load<WORD>(void *drcontext, opnd_t dst_reg, opnd_t mem)
 {
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_load // ldr sapp2, [sapp2]
-                             (drcontext, dst_reg, mem16));
+    return XINST_CREATE_load(drcontext, dst_reg, mem);
 }
 
-static void
-propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
+template <opnd_sz_t T>
+instr_t *instr_store(void *drcontext, opnd_t mem, opnd_t src_reg)
+{
+    DR_ASSERT_MSG(false, "Unreachable");
+    return NULL;
+}
+
+template <>
+instr_t *instr_store<BYTE>(void *drcontext, opnd_t mem, opnd_t src_reg)
+{
+    return XINST_CREATE_store_1byte(drcontext, mem, src_reg);
+}
+
+template <>
+instr_t *instr_store<HALF>(void *drcontext, opnd_t mem, opnd_t src_reg)
+{
+    return XINST_CREATE_store_2bytes(drcontext, mem, src_reg);
+}
+
+template <>
+instr_t *instr_store<WORD>(void *drcontext, opnd_t mem, opnd_t src_reg)
+{
+    return XINST_CREATE_store(drcontext, mem, src_reg);
+}
+
+template <opnd_sz_t T>
+opnd_t opnd_mem(reg_id_t base_reg, int disp)
+{
+    DR_ASSERT_MSG(false, "Unreachable");
+    return {0};
+}
+
+template <>
+opnd_t opnd_mem<BYTE>(reg_id_t base_reg, int disp)
+{
+    return OPND_CREATE_MEM8(base_reg, disp);
+}
+
+template <>
+opnd_t opnd_mem<HALF>(reg_id_t base_reg, int disp)
+{
+    return OPND_CREATE_MEM16(base_reg, disp);
+}
+
+template <>
+opnd_t opnd_mem<WORD>(reg_id_t base_reg, int disp)
+{
+    return OPND_CREATE_MEM32(base_reg, disp);
+}
+
+template <opnd_sz_t T>
+opnd_t opnd_imm(ptr_int_t imm)
+{
+    DR_ASSERT_MSG(false, "Unreachable");
+    return {0};
+}
+
+template <>
+opnd_t opnd_imm<BYTE>(ptr_int_t imm)
+{
+    return OPND_CREATE_INT8(imm);
+}
+
+template <>
+opnd_t opnd_imm<HALF>(ptr_int_t imm)
+{
+    return OPND_CREATE_INT16(imm);
+}
+
+template <>
+opnd_t opnd_imm<WORD>(ptr_int_t imm)
+{
+    return OPND_CREATE_INT32(imm);
+}
+
+//revsh
+
+template <opnd_sz_t sz>
+void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
     ldr reg1, [mem2]
 
@@ -220,12 +286,11 @@ propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
         drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
 
-        
         // place to %sapp2% the value placed at [mem2] shadow address
-        instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2, [sapp2]
-                                 (drcontext,
-                                  opnd_create_reg(sapp2),       // dst: sapp2
-                                  OPND_CREATE_MEM8(sapp2, 0))); // src: sapp2
+        instrlist_meta_preinsert(ilist, where,
+                                 instr_load<sz>(drcontext, // ldrXX sapp2, [sapp2]
+                                                opnd_create_reg(sapp2),
+                                                opnd_mem<sz>(sapp2, 0)));
 
         // propagate 3d policy: ldr r0, [r1, r2].
         // If r2 is tainted then r0 is tainted too
@@ -237,14 +302,18 @@ propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
             // get value of %reg_ind% shadow register and place it to %sreg_ind%
             drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg_ind, sreg_ind);
 
-            instrlist_meta_preinsert(ilist, where, INSTR_CREATE_orr // sapp2 |= sreg_ind
-                                     (drcontext, opnd_create_reg(sapp2), opnd_create_reg(sapp2), opnd_create_reg(sreg_ind)));
+            instrlist_meta_preinsert(ilist, where,
+                                     INSTR_CREATE_orr(drcontext, // sapp2 |= sreg_ind
+                                                      opnd_create_reg(sapp2),
+                                                      opnd_create_reg(sapp2),
+                                                      opnd_create_reg(sreg_ind)));
         }
 
         // save the value of %sapp2% to shadow register of reg1
-        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sapp2, [sreg1]
-                                     (drcontext, OPND_CREATE_MEM8(sreg1, 0), // dst_mem: sreg1
-                                      opnd_create_reg(sapp2)));              // src_reg: sapp2
+        instrlist_meta_preinsert_xl8(ilist, where,
+                                     instr_store<sz>(drcontext, // str sapp2, [sreg1]
+                                                     opnd_mem<sz>(sreg1, 0),
+                                                     opnd_create_reg(sapp2)));
     }
 }
 
@@ -301,8 +370,8 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     }
 }
 
-static void
-propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
+template <opnd_sz_t sz>
+void propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
     str reg1, [mem2]  
 
@@ -315,7 +384,6 @@ propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     {
         auto sreg1 = drreg_reservation{ilist, where};
         auto sapp2 = drreg_reservation{ilist, where};
-
         reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
 
         // dereference the memory address at mem2 and store the result to %sapp2% register
@@ -328,30 +396,36 @@ propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
 
         // write the value of reg1 to [mem2] shadow address
-        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sreg1, [sapp2]
-                                     (drcontext, OPND_CREATE_MEM8(sapp2, 0), // dst_mem: sapp2
-                                      opnd_create_reg(sreg1)));              // src_reg: sreg1
+        instrlist_meta_preinsert_xl8(ilist, where,
+                                     instr_store<sz>(drcontext, // str sreg1, [sapp2]
+                                                     opnd_mem<sz>(sapp2, 0),
+                                                     opnd_create_reg(sreg1)));
 
         // if it's a strex then we have to untaint return status register
-        int opcode = instr_get_opcode(where);
-        if (opcode == OP_strex ||
-            opcode == OP_strexb ||
-            opcode == OP_strexh)
-        {
-            reg_id_t rd = opnd_get_reg(instr_get_dst(where, 1));
-            reg_id_t srd = sreg1;
-            reg_id_t nullreg = sapp2;
-
-            // nullreg = 0
-            instrlist_meta_preinsert(ilist, where, XINST_CREATE_move(drcontext, opnd_create_reg(nullreg), OPND_CREATE_INT8(0)));
-
-            // get shadow register address of %rd% and place it to %srd%
-            drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
-
-            // write 0 to shadow value of %rd%
-            instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str nullreg, [strd]
-                                        (drcontext, OPND_CREATE_MEM8(srd, 0), opnd_create_reg(nullreg)));
-        }
+        //int opcode = instr_get_opcode(where);
+        //if (opcode == OP_strex ||
+        //    opcode == OP_strexb ||
+        //    opcode == OP_strexh)
+        //{
+        //    reg_id_t rd = opnd_get_reg(instr_get_dst(where, 1));
+        //    reg_id_t srd = sreg1;
+        //    reg_id_t nullreg = sapp2;
+        //
+        //    // nullreg = 0
+        //    instrlist_meta_preinsert(ilist, where,
+        //                             XINST_CREATE_move(drcontext, // mov nullreg , 0
+        //                                               opnd_create_reg(nullreg),
+        //                                               OPND_CREATE_INT8(0)));
+        //
+        //    // get shadow register address of %rd% and place it to %srd%
+        //    drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
+        //
+        //    // write 0 to shadow value of %rd%
+        //    instrlist_meta_preinsert_xl8(ilist, where,
+        //                                 instr_store<WORD>(drcontext,
+        //                                                   OPND_CREATE_MEM8(srd, 0),
+        //                                                   opnd_create_reg(nullreg)));
+        //}
     }
 }
 
@@ -441,9 +515,10 @@ propagate_mov_regs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
 
     // write shadow value of reg1 to shadow value of reg2
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte  // str sreg1, [sreg2]
-                             (drcontext, OPND_CREATE_MEM8(sreg2, 0), // dst_mem: sreg2
-                              opnd_create_reg(sreg1)));              // src_reg: sreg1
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_store(drcontext, // str sreg1, [sreg2]
+                                                OPND_CREATE_MEM32(sreg2, 0),
+                                                opnd_create_reg(sreg1)));
 }
 
 static void
@@ -472,15 +547,16 @@ propagate_mov_imm_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
 
     // place constant imm to register %simm2%
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_move // mov simm2, 0
-                             (drcontext,
-                              opnd_create_reg(simm2),             // dst: simm2
-                              opnd_create_immed_int(0, OPSZ_1))); // src: 0
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_move(drcontext, // mov simm2, 0
+                                               opnd_create_reg(simm2),
+                                               OPND_CREATE_INT32(0)));
 
     // move to shadow register of reg2 the value of imm1
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte  // str simm2, [sreg2]
-                             (drcontext, OPND_CREATE_MEM8(sreg2, 0), // dst_mem: sreg2
-                              opnd_create_reg(simm2)));              // src_reg: simm2
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_store(drcontext, // str simm2, [sreg2]
+                                                OPND_CREATE_MEM32(sreg2, 0),
+                                                opnd_create_reg(simm2)));
 }
 
 static void
@@ -812,27 +888,27 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     }
 
     // untaint stack area when allocating a new frame
-    if (opcode == OP_sub || opcode == OP_subs)
-    {
-        if (opnd_get_reg(instr_get_dst(where, 0)) == DR_REG_SP &&
-            opnd_get_reg(instr_get_src(where, 0)) == DR_REG_SP &&
-            opnd_is_immed(instr_get_src(where, 1)))
-        {
-            bool ok;
-            dr_mcontext_t mcontext = {sizeof(dr_mcontext_t), DR_MC_CONTROL};
-            ok = dr_get_mcontext(drcontext, &mcontext);
-            DR_ASSERT(ok);
-
-            ptr_int_t imm = opnd_get_immed_int(instr_get_src(where, 1));
-            app_pc sp_val = (app_pc)reg_get_value(DR_REG_SP, &mcontext);
-
-            for (int i = 1; i < imm + 2; i++)
-            {
-                ok = drtaint_set_app_taint(drcontext, &sp_val[-i], 0);
-                DR_ASSERT(ok);
-            }
-        }
-    }
+    //if (opcode == OP_sub || opcode == OP_subs)
+    //{
+    //    if (opnd_get_reg(instr_get_dst(where, 0)) == DR_REG_SP &&
+    //        opnd_get_reg(instr_get_src(where, 0)) == DR_REG_SP &&
+    //        opnd_is_immed(instr_get_src(where, 1)))
+    //    {
+    //        bool ok;
+    //        dr_mcontext_t mcontext = {sizeof(dr_mcontext_t), DR_MC_CONTROL};
+    //        ok = dr_get_mcontext(drcontext, &mcontext);
+    //        DR_ASSERT(ok);
+    //
+    //        ptr_int_t imm = opnd_get_immed_int(instr_get_src(where, 1));
+    //        app_pc sp_val = (app_pc)reg_get_value(DR_REG_SP, &mcontext);
+    //
+    //        for (int i = 1; i < imm + 2; i++)
+    //        {
+    //            ok = drtaint_set_app_taint(drcontext, &sp_val[-i], 0);
+    //            DR_ASSERT(ok);
+    //        }
+    //    }
+    //}
 
     // no support for simd instructions
     if (instr_is_simd(where))
@@ -934,24 +1010,28 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         break;
 
     case OP_ldr:
-    case OP_ldrb:
+    case OP_ldrex:
+    case OP_ldrt:
+
+        propagate_ldr<WORD>(drcontext, tag, ilist, where);
+        break;
+
     case OP_ldrh:
     case OP_ldrsh:
-    case OP_ldrsb:
-
-    // exclusive ldr
-    case OP_ldrex:
-    case OP_ldrexb:
     case OP_ldrexh:
-
-    // thumb mode
-    case OP_ldrt:
-    case OP_ldrbt:
     case OP_ldrht:
-    case OP_ldrsbt:
     case OP_ldrsht:
 
-        propagate_ldr(drcontext, tag, ilist, where);
+        propagate_ldr<HALF>(drcontext, tag, ilist, where);
+        break;
+
+    case OP_ldrb:
+    case OP_ldrsb:
+    case OP_ldrexb:
+    case OP_ldrbt:
+    case OP_ldrsbt:
+
+        propagate_ldr<BYTE>(drcontext, tag, ilist, where);
         break;
 
     case OP_ldrd:
@@ -961,18 +1041,24 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         break;
 
     case OP_str:
-    case OP_strb:
-    case OP_strh:
     case OP_strex:
-    case OP_strexb:
-    case OP_strexh:
-
-    // thumb
     case OP_strt:
-    case OP_strbt:
+
+        propagate_str<WORD>(drcontext, tag, ilist, where);
+        break;
+
+    case OP_strh:
+    case OP_strexh:
     case OP_strht:
 
-        propagate_str(drcontext, tag, ilist, where);
+        propagate_str<HALF>(drcontext, tag, ilist, where);
+        break;
+
+    case OP_strb:
+    case OP_strexb:
+    case OP_strbt:
+
+        propagate_str<BYTE>(drcontext, tag, ilist, where);
         break;
 
     case OP_strd:

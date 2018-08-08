@@ -195,28 +195,42 @@ bool test_simple()
 {
     TEST_START;
 
-    char c1, c2, c3, c4;
-    MAKE_TAINTED(&c1, sizeof(char));
-    TEST_ASSERT(IS_TAINTED(&c1, sizeof(char)));
-    TEST_ASSERT(!IS_TAINTED(&c1, sizeof(int)));
-    TEST_ASSERT(!IS_TAINTED(&c2, sizeof(char)));
-    TEST_ASSERT(!IS_TAINTED(&c3, sizeof(char)));
-    TEST_ASSERT(!IS_TAINTED(&c4, sizeof(char)));
+    //char c1, c2, c3, c4;
+    //MAKE_TAINTED(&c1, sizeof(char));
+    //TEST_ASSERT(IS_TAINTED(&c1, sizeof(char)));
+    //TEST_ASSERT(!IS_TAINTED(&c1, sizeof(int)));
+    //TEST_ASSERT(!IS_TAINTED(&c2, sizeof(char)));
+    //TEST_ASSERT(!IS_TAINTED(&c3, sizeof(char)));
+    //TEST_ASSERT(!IS_TAINTED(&c4, sizeof(char)));
+    //
+    //int i1,i2;
+    //MAKE_TAINTED(&i1, sizeof(int));
+    //TEST_ASSERT(IS_TAINTED(&i1, sizeof(int)));
+    //TEST_ASSERT(IS_TAINTED(&i1, sizeof(short)));
+    //TEST_ASSERT(!IS_TAINTED(&i2, sizeof(int)));
+    //
+    //char buf[] = "abcd";
+    //MAKE_TAINTED(&buf[0], sizeof(char));
+    //MAKE_TAINTED(&buf[2], sizeof(char));
+    //
+    //TEST_ASSERT(IS_TAINTED(&buf[0], sizeof(char)));
+    //TEST_ASSERT(!IS_TAINTED(&buf[1], sizeof(char)));
+    //TEST_ASSERT(IS_TAINTED(&buf[2], sizeof(char)));
+    //TEST_ASSERT(!IS_TAINTED(&buf[3], sizeof(char)));
 
-    int i1,i2;
-    MAKE_TAINTED(&i1, sizeof(int));
-    TEST_ASSERT(IS_TAINTED(&i1, sizeof(int)));
-    TEST_ASSERT(IS_TAINTED(&i1, sizeof(short)));
-    TEST_ASSERT(!IS_TAINTED(&i2, sizeof(int)));
+    int a = 0, b = 0;
+    MAKE_TAINTED(&a, sizeof(a));
 
-    char buf[] = "abcd";
-    MAKE_TAINTED(&buf[0], sizeof(char));
-    MAKE_TAINTED(&buf[2], sizeof(char));
-
-    TEST_ASSERT(IS_TAINTED(&buf[0], sizeof(char)));
-    TEST_ASSERT(!IS_TAINTED(&buf[1], sizeof(char)));
-    TEST_ASSERT(IS_TAINTED(&buf[2], sizeof(char)));
-    TEST_ASSERT(!IS_TAINTED(&buf[3], sizeof(char)));
+    asm volatile("ldr r0, %1;"
+                 "str r0, %0;"
+                 : "=m"(b)
+                 : "m"(a)
+                 : "r0");
+    TEST_ASSERT(IS_TAINTED(&b, sizeof(int)));
+    TEST_ASSERT(IS_TAINTED(&b, sizeof(char)));
+    TEST_ASSERT(IS_TAINTED(((char*)&b+1), sizeof(char)));
+    TEST_ASSERT(IS_TAINTED(((char*)&b+2), sizeof(char)));
+    TEST_ASSERT(IS_TAINTED(((char*)&b+3), sizeof(char)));
 
     TEST_END;
 }

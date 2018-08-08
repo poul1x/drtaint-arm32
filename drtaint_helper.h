@@ -5,26 +5,29 @@
 #include "drreg.h"
 
 #ifdef __cplusplus
-extern "C" {
+extern "C"
+{
 #endif
 
-class drreg_reservation {
-public:
-    drreg_reservation(instrlist_t *ilist, instr_t *where);
-    ~drreg_reservation();
-    operator reg_id_t() const { return reg_; }
-private:
-    instrlist_t *ilist_;
-    instr_t *where_;
-    reg_id_t reg_;
-    void *drcontext_;
-};
+    class drreg_reservation
+    {
+      public:
+        drreg_reservation(instrlist_t *ilist, instr_t *where);
+        ~drreg_reservation();
+        operator reg_id_t() const { return reg_; }
 
-void
-unimplemented_opcode(instr_t *where);
+      private:
+        instrlist_t *ilist_;
+        instr_t *where_;
+        reg_id_t reg_;
+        void *drcontext_;
+    };
 
-void
-instrlist_meta_preinsert_xl8(instrlist_t *ilist, instr_t *where, instr_t *insert);
+    void
+    unimplemented_opcode(instr_t *where);
+
+    void
+    instrlist_meta_preinsert_xl8(instrlist_t *ilist, instr_t *where, instr_t *insert);
 
 #ifdef __cplusplus
 }

@@ -108,7 +108,7 @@ bool drtaint_shadow_get_app_taint4(void *drcontext, app_pc app, uint *result)
 {
     size_t sz = sizeof(uint);
     bool ret = umbra_read_shadow_memory(umbra_map, app, sizeof(uint),
-                                        &sz, (byte*)result) == DRMF_SUCCESS;
+                                        &sz, (byte *)result) == DRMF_SUCCESS;
     return ret;
 }
 
@@ -124,7 +124,7 @@ bool drtaint_shadow_set_app_taint4(void *drcontext, app_pc app, uint result)
 {
     size_t sz = sizeof(uint);
     bool ret = umbra_write_shadow_memory(umbra_map, app, sizeof(uint),
-                                         &sz, (byte*)&result) == DRMF_SUCCESS;
+                                         &sz, (byte *)&result) == DRMF_SUCCESS;
     return ret;
 }
 /* ======================================================================================
@@ -300,8 +300,8 @@ bool drtaint_shadow_insert_reg_to_shadow_load(void *drcontext, instrlist_t *ilis
     %reg% = value of register situated at %regaddr%
 */
 {
-    unsigned int offs = offsetof(per_thread_t, shadow_gprs[shadow - DR_REG_R0]);
     DR_ASSERT(shadow - DR_REG_R0 < DR_NUM_GPR_REGS);
+    unsigned int offs = offsetof(per_thread_t, shadow_gprs[shadow - DR_REG_R0]);
 
     /* Load the per_thread data structure holding the thread-local taint
      * values of each register.
@@ -311,10 +311,10 @@ bool drtaint_shadow_insert_reg_to_shadow_load(void *drcontext, instrlist_t *ilis
     drmgr_insert_read_tls_field(drcontext, tls_index, ilist, where, regaddr);
 
     // out <- reg = shadow_gprs[offs]
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr reg, [byte]
-                             (drcontext,
-                              opnd_create_reg(regaddr),          // dst reg
-                              OPND_CREATE_MEM8(regaddr, offs))); // src byte: reg + offs
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_load(drcontext, // ldr regaddr, [regaddr, #offs]
+                                               opnd_create_reg(regaddr),
+                                               OPND_CREATE_MEM32(regaddr, offs)));
 
     return true;
 }
