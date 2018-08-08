@@ -195,19 +195,28 @@ bool test_simple()
 {
     TEST_START;
 
-    char buf[] = "12345";
-    char buf2[] = "54321";
-    MAKE_TAINTED(buf, sizeof(buf));
+    char c1, c2, c3, c4;
+    MAKE_TAINTED(&c1, sizeof(char));
+    TEST_ASSERT(IS_TAINTED(&c1, sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&c1, sizeof(int)));
+    TEST_ASSERT(!IS_TAINTED(&c2, sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&c3, sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&c4, sizeof(char)));
 
-    TEST_ASSERT(IS_TAINTED(buf, sizeof(buf)));
-    TEST_ASSERT(!IS_TAINTED(buf2, sizeof(buf2)));
+    int i1,i2;
+    MAKE_TAINTED(&i1, sizeof(int));
+    TEST_ASSERT(IS_TAINTED(&i1, sizeof(int)));
+    TEST_ASSERT(IS_TAINTED(&i1, sizeof(short)));
+    TEST_ASSERT(!IS_TAINTED(&i2, sizeof(int)));
 
-    int imm = 100500;
-    int imm2 = 100501;
-    MAKE_TAINTED(&imm, sizeof(int));
+    char buf[] = "abcd";
+    MAKE_TAINTED(&buf[0], sizeof(char));
+    MAKE_TAINTED(&buf[2], sizeof(char));
 
-    TEST_ASSERT(IS_TAINTED(&imm, sizeof(int)));
-    TEST_ASSERT(!IS_TAINTED(&imm2, sizeof(int)));
+    TEST_ASSERT(IS_TAINTED(&buf[0], sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&buf[1], sizeof(char)));
+    TEST_ASSERT(IS_TAINTED(&buf[2], sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&buf[3], sizeof(char)));
 
     TEST_END;
 }
@@ -988,7 +997,7 @@ bool test_asm_ldrd_reg()
     //buggy test
     TEST_START;
     TEST_END;
-    
+
     unsigned int A[2] = {0x12345678, 0x9ABCDEF0}, v0, v1;
     MAKE_TAINTED(A, sizeof(A));
 

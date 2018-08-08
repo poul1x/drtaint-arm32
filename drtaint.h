@@ -32,16 +32,22 @@ drtaint_insert_reg_to_taint(void *drcontext, instrlist_t *ilist, instr_t *where,
                             reg_id_t shadow, reg_id_t regaddr);
 
 bool
-drtaint_get_reg_taint(void *drcontext, reg_id_t reg, byte *result);
+drtaint_get_reg_taint(void *drcontext, reg_id_t reg, uint *result);
 
 bool
-drtaint_set_reg_taint(void *drcontext, reg_id_t reg, byte value);
+drtaint_set_reg_taint(void *drcontext, reg_id_t reg, uint value);
 
 bool
 drtaint_get_app_taint(void *drcontext, app_pc app, byte *result);
 
 bool
 drtaint_set_app_taint(void *drcontext, app_pc app, byte result);
+
+bool
+drtaint_get_app_taint4(void *drcontext, app_pc app, uint *result);
+
+bool
+drtaint_set_app_taint4(void *drcontext, app_pc app, uint result);
 
 void
 drtaint_save_instr(void *drcontext, int opcode);

@@ -39,16 +39,22 @@ drtaint_shadow_insert_reg_to_shadow_load(void *drcontext, instrlist_t *ilist,
                                          reg_id_t regaddr);
 
 bool
-drtaint_shadow_get_reg_taint(void *drcontext, reg_id_t reg, byte *result);
+drtaint_shadow_get_reg_taint(void *drcontext, reg_id_t reg, uint *result);
 
 bool
-drtaint_shadow_set_reg_taint(void *drcontext, reg_id_t reg, byte value);
+drtaint_shadow_set_reg_taint(void *drcontext, reg_id_t reg, uint value);
 
 bool
 drtaint_shadow_get_app_taint(void *drcontext, app_pc app, byte *result);
 
 bool
 drtaint_shadow_set_app_taint(void *drcontext, app_pc app, byte result);
+
+bool
+drtaint_shadow_get_app_taint4(void *drcontext, app_pc app, uint *result);
+
+bool
+drtaint_shadow_set_app_taint4(void *drcontext, app_pc app, uint result);
 
 void
 drtaint_shadow_save_instr(void *drcontext, int opcode);

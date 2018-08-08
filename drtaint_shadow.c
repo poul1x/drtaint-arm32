@@ -50,7 +50,7 @@ typedef struct _per_thread_t
      * currently uses UMBRA_MAP_SCALE_DOWN_4X, which implies that each 4-byte
      * aligned location is represented as one byte. We imitate this here.
      */
-    byte shadow_gprs[DR_NUM_GPR_REGS];
+    uint shadow_gprs[DR_NUM_GPR_REGS];
 
     // holds shadow flags
     uint shadow_cpsr;
@@ -97,30 +97,36 @@ bool drtaint_shadow_insert_app_to_shadow(void *drcontext, instrlist_t *ilist, in
 }
 
 bool drtaint_shadow_get_app_taint(void *drcontext, app_pc app, byte *result)
-/*
-    Read shadow value at address %app_pc% and store it to %result%
-    Note: 4 real memory bytes = 1 shadow memory byte
-*/
 {
     size_t sz = 1;
-    bool ret = umbra_read_shadow_memory(umbra_map, app, 4,
-                                        &sz, result) != DRMF_ERROR_INVALID_ADDRESS;
+    bool ret = umbra_read_shadow_memory(umbra_map, app, 1,
+                                        &sz, result) == DRMF_SUCCESS;
     return ret;
 }
 
-//+
+bool drtaint_shadow_get_app_taint4(void *drcontext, app_pc app, uint *result)
+{
+    size_t sz = sizeof(uint);
+    bool ret = umbra_read_shadow_memory(umbra_map, app, sizeof(uint),
+                                        &sz, (byte*)result) == DRMF_SUCCESS;
+    return ret;
+}
+
 bool drtaint_shadow_set_app_taint(void *drcontext, app_pc app, byte result)
-/*
-    Translate address of %app_pc% to shadow address and write there %result% value
-    Note: 4 real memory bytes = 1 shadow memory byte
-*/
 {
     size_t sz = 1;
-    bool ret = umbra_write_shadow_memory(umbra_map, app, 4,
-                                         &sz, &result) != DRMF_ERROR_INVALID_ADDRESS;
+    bool ret = umbra_write_shadow_memory(umbra_map, app, 1,
+                                         &sz, &result) == DRMF_SUCCESS;
     return ret;
 }
 
+bool drtaint_shadow_set_app_taint4(void *drcontext, app_pc app, uint result)
+{
+    size_t sz = sizeof(uint);
+    bool ret = umbra_write_shadow_memory(umbra_map, app, sizeof(uint),
+                                         &sz, (byte*)&result) == DRMF_SUCCESS;
+    return ret;
+}
 /* ======================================================================================
  * shadow memory implementation
  * ==================================================================================== */
@@ -133,7 +139,7 @@ drtaint_shadow_mem_init(int id)
 
     /* initialize umbra and lazy page handling */
     memset(&umbra_map_ops, 0, sizeof(umbra_map_ops));
-    umbra_map_ops.scale = UMBRA_MAP_SCALE_DOWN_4X;
+    umbra_map_ops.scale = UMBRA_MAP_SCALE_SAME_1X;
     umbra_map_ops.flags = UMBRA_MAP_CREATE_SHADOW_ON_TOUCH |
                           UMBRA_MAP_SHADOW_SHARED_READONLY;
     umbra_map_ops.default_value = 0;
@@ -314,7 +320,7 @@ bool drtaint_shadow_insert_reg_to_shadow_load(void *drcontext, instrlist_t *ilis
 }
 
 // +
-bool drtaint_shadow_get_reg_taint(void *drcontext, reg_id_t reg, byte *result)
+bool drtaint_shadow_get_reg_taint(void *drcontext, reg_id_t reg, uint *result)
 /*
     Get the value of shadow register %reg% and store it in %result%
 */
@@ -327,7 +333,7 @@ bool drtaint_shadow_get_reg_taint(void *drcontext, reg_id_t reg, byte *result)
 }
 
 // +
-bool drtaint_shadow_set_reg_taint(void *drcontext, reg_id_t reg, byte value)
+bool drtaint_shadow_set_reg_taint(void *drcontext, reg_id_t reg, uint value)
 /*
     Set the value of shadow register %reg% to value %value%
 */
