@@ -311,9 +311,9 @@ void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
 
         // save the value of %sapp2% to shadow register of reg1
         instrlist_meta_preinsert_xl8(ilist, where,
-                                     instr_store<sz>(drcontext, // str sapp2, [sreg1]
-                                                     opnd_mem<sz>(sreg1, 0),
-                                                     opnd_create_reg(sapp2)));
+                                     XINST_CREATE_store(drcontext, // str sapp2, [sreg1]
+                                                        OPND_CREATE_MEM32(sreg1, 0),
+                                                        opnd_create_reg(sapp2)));
     }
 }
 
@@ -341,32 +341,43 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
 
         // get [mem2 + 4] address
-        instrlist_meta_preinsert(ilist, where, XINST_CREATE_add_2src // add sapp2n, sapp2, #4
-                                 (drcontext, opnd_create_reg(sapp2n), opnd_create_reg(sapp2), OPND_CREATE_INT8(4)));
+        instrlist_meta_preinsert(ilist, where,
+                                 XINST_CREATE_add_2src(drcontext, // add sapp2n, sapp2, #4
+                                                       opnd_create_reg(sapp2n),
+                                                       opnd_create_reg(sapp2),
+                                                       OPND_CREATE_INT32(4)));
 
         // get shadow memory addresses of reg1 and [mem2] and place them to %sreg1% and %sapp2%
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
         drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
 
         // place to %sapp2% the value placed at [mem2] shadow address
-        instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2, [sapp2]
-                                 (drcontext, opnd_create_reg(sapp2), OPND_CREATE_MEM8(sapp2, 0)));
+        instrlist_meta_preinsert(ilist, where,
+                                 XINST_CREATE_load(drcontext, // ldr sapp2, [sapp2]
+                                                   opnd_create_reg(sapp2),
+                                                   OPND_CREATE_MEM32(sapp2, 0)));
 
         // save the value of %sapp2% to shadow register of reg1
-        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str sapp2, [sreg1]
-                                     (drcontext, OPND_CREATE_MEM8(sreg1, 0), opnd_create_reg(sapp2)));
+        instrlist_meta_preinsert_xl8(ilist, where,
+                                     XINST_CREATE_store(drcontext, // str sapp2, [sreg1]
+                                                        OPND_CREATE_MEM32(sreg1, 0),
+                                                        opnd_create_reg(sapp2)));
 
         // get shadow memory addresses of reg2 and [mem2 + 4] and place them to %sreg2% and %sapp2n%
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2n, sreg2);
         drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
 
         // place to %sapp2n% the value placed at [mem2 + 4] shadow address
-        instrlist_meta_preinsert(ilist, where, XINST_CREATE_load_1byte // ldr sapp2n, [sapp2n]
-                                 (drcontext, opnd_create_reg(sapp2n), OPND_CREATE_MEM8(sapp2n, 0)));
+        instrlist_meta_preinsert(ilist, where,
+                                 XINST_CREATE_load(drcontext, // ldr sapp2n, [sapp2n]
+                                                   opnd_create_reg(sapp2n),
+                                                   OPND_CREATE_MEM32(sapp2n, 0)));
 
         // save the value of %sapp2n% to shadow register of reg2
-        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str sapp2n, [sreg2]
-                                     (drcontext, OPND_CREATE_MEM8(sreg2, 0), opnd_create_reg(sapp2n)));
+        instrlist_meta_preinsert_xl8(ilist, where,
+                                     XINST_CREATE_store(drcontext, // str sapp2n, [sreg2]
+                                                        OPND_CREATE_MEM32(sreg2, 0),
+                                                        opnd_create_reg(sapp2n)));
     }
 }
 

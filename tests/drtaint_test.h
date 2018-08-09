@@ -8,6 +8,9 @@
 #define IS_TAINTED(mem, mem_sz) \
     (write(FD_APP_IS_TRACED, mem, mem_sz) == DRTAINT_SUCCESS)
 
+#define IS_NOT_TAINTED(mem, mem_sz) \
+    (mem_sz == 0 ? true : !IS_TAINTED(mem, mem_sz))
+
 #define MAKE_TAINTED(mem, mem_sz) \
     assert(write(FD_APP_START_TRACE, mem, mem_sz) == DRTAINT_SUCCESS)
 
@@ -62,6 +65,7 @@ bool test_asm_ldr_reg();
 bool test_asm_ldr_reg_ex();
 bool test_asm_ldrd_imm();
 bool test_asm_ldrd_reg();
+bool test_asm_ldrd_ex();
 
 bool test_asm_ldm();
 bool test_asm_ldm_w();

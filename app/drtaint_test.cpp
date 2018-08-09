@@ -190,6 +190,7 @@ handle_start_trace(void *drcontext)
 {
     char *buffer = (char *)dr_syscall_get_param(drcontext, 1);
     size_t len = dr_syscall_get_param(drcontext, 2);
+    bool ok;
 
     // taint buffer
     for (int i = 0; i < len; ++i)
@@ -211,12 +212,15 @@ handle_check_trace(void *drcontext)
     char *buffer = (char *)dr_syscall_get_param(drcontext, 1);
     size_t len = dr_syscall_get_param(drcontext, 2);
     byte result;
+    bool ok;
 
     // check the buffer is tainted
     for (int i = 0; i < len; ++i)
     {
-        if (!drtaint_get_app_taint(drcontext, (app_pc)&buffer[i], &result) ||
-            !IS_TAINTED(result))
+        ok = drtaint_get_app_taint(drcontext, (app_pc)&buffer[i], &result);
+        DR_ASSERT(ok);
+        
+        if (!IS_TAINTED(result))
         {
             set_syscall_retval(drcontext, false);
             return false;

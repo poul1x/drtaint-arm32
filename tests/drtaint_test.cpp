@@ -50,6 +50,7 @@ Test gTests[] = {
     {"ldr_reg_ex", test_asm_ldr_reg_ex},
     {"ldrd_imm", test_asm_ldrd_imm},
     {"ldrd_reg", test_asm_ldrd_reg},
+    {"ldrd_ex", test_asm_ldrd_ex}, 
     {"ldm", test_asm_ldm},
     {"ldm_w", test_asm_ldm_w},
     {"ldm_ex", test_asm_ldm_ex},
@@ -218,19 +219,23 @@ bool test_simple()
     //TEST_ASSERT(IS_TAINTED(&buf[2], sizeof(char)));
     //TEST_ASSERT(!IS_TAINTED(&buf[3], sizeof(char)));
 
-    int a = 0, b = 0;
-    MAKE_TAINTED(&a, sizeof(a));
+    //int a = 0, b = 0;
+    //MAKE_TAINTED(&a, sizeof(a));
+    //
+    //asm volatile("ldr r0, %1;"
+    //             "str r0, %0;"
+    //             : "=m"(b)
+    //             : "m"(a)
+    //             : "r0");
+    //TEST_ASSERT(IS_TAINTED(&b, sizeof(int)));
+    //TEST_ASSERT(IS_TAINTED(&b, sizeof(char)));
+    //TEST_ASSERT(IS_TAINTED(((char *)&b + 1), sizeof(char)));
+    //TEST_ASSERT(IS_TAINTED(((char *)&b + 2), sizeof(char)));
+    //TEST_ASSERT(IS_TAINTED(((char *)&b + 3), sizeof(char)));
 
-    asm volatile("ldr r0, %1;"
-                 "str r0, %0;"
-                 : "=m"(b)
-                 : "m"(a)
-                 : "r0");
-    TEST_ASSERT(IS_TAINTED(&b, sizeof(int)));
-    TEST_ASSERT(IS_TAINTED(&b, sizeof(char)));
-    TEST_ASSERT(IS_TAINTED(((char*)&b+1), sizeof(char)));
-    TEST_ASSERT(IS_TAINTED(((char*)&b+2), sizeof(char)));
-    TEST_ASSERT(IS_TAINTED(((char*)&b+3), sizeof(char)));
+    int a = 0;
+    TEST_ASSERT(IS_TAINTED(&a, 0));
+    TEST_ASSERT(IS_NOT_TAINTED(&a, 0));
 
     TEST_END;
 }
@@ -581,74 +586,86 @@ bool test_untaint_stack()
 
 #pragma region asm_ldr_imm
 
-#define INL_LDR(com, r0, r1)              \
-                                          \
-    printf("Test '" #com " r0, [r1]'\n"); \
-    r0 = 0;                               \
-    asm volatile("ldr r1, %1;"            \
-                 "" #com " r0, [r1];"     \
-                 "str r0, %0;"            \
-                 : "=m"(r0)               \
-                 : "m"(r1)                \
+#define INL_LDR(com, r0, r1)                \
+                                            \
+    printf("\nTest '" #com " r0, [r1]'\n"); \
+    r0 = 0;                                 \
+    asm volatile("ldr r1, %1;"              \
+                 "" #com " r0, [r1];"       \
+                 "str r0, %0;"              \
+                 : "=m"(r0)                 \
+                 : "m"(r1)                  \
                  : "r0", "r1")
 
-#define INL_LDR_I(com, r0, r1)                \
-                                              \
-    printf("Test '" #com " r0, [r1, #4]'\n"); \
-    r0 = 0;                                   \
-    asm volatile("ldr r1, %1;"                \
-                 "" #com " r0, [r1, #4];"     \
-                 "str r0, %0;"                \
-                 : "=m"(r0)                   \
-                 : "m"(r1)                    \
+#define INL_LDR_I(com, r0, r1)                  \
+                                                \
+    printf("\nTest '" #com " r0, [r1, #4]'\n"); \
+    r0 = 0;                                     \
+    asm volatile("ldr r1, %1;"                  \
+                 "" #com " r0, [r1, #4];"       \
+                 "str r0, %0;"                  \
+                 : "=m"(r0)                     \
+                 : "m"(r1)                      \
                  : "r0", "r1")
 
 #ifndef MTHUMB
-#define INL_LDR_I_PRE(com, r0, r1)             \
+#define INL_LDR_I_PRE(com, r0, r1)               \
+                                                 \
+    printf("\nTest '" #com " r0, [r1, #4]!'\n"); \
+    r0 = 0;                                      \
+    asm volatile("ldr r1, %1;"                   \
+                 "" #com " r0, [r1, #4]!;"       \
+                 "str r0, %0;"                   \
+                 : "=m"(r0)                      \
+                 : "m"(r1)                       \
+                 : "r0", "r1")
+
+#define INL_LDR_I_POST(com, r0, r1)            \
                                                \
-    printf("Test '" #com " r0, [r1, #4]!'\n"); \
+    printf("\nTest " #com " r0, [r1], #4'\n"); \
     r0 = 0;                                    \
     asm volatile("ldr r1, %1;"                 \
-                 "" #com " r0, [r1, #4]!;"     \
+                 "" #com " r0, [r1], #4;"      \
                  "str r0, %0;"                 \
                  : "=m"(r0)                    \
                  : "m"(r1)                     \
                  : "r0", "r1")
-
-#define INL_LDR_I_POST(com, r0, r1)          \
-                                             \
-    printf("Test " #com " r0, [r1], #4'\n"); \
-    r0 = 0;                                  \
-    asm volatile("ldr r1, %1;"               \
-                 "" #com " r0, [r1], #4;"    \
-                 "str r0, %0;"               \
-                 : "=m"(r0)                  \
-                 : "m"(r1)                   \
-                 : "r0", "r1")
 #endif
 
 #ifndef MTHUMB
-#define CHECK_ALL_IMM(com, r0, r1)             \
-                                               \
-    INL_LDR(com, r0, r1);                      \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-                                               \
-    INL_LDR_I(com, r0, r1);                    \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-                                               \
-    INL_LDR_I_PRE(com, r0, r1);                \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-                                               \
-    INL_LDR_I_POST(com, r0, r1);               \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
+#define CHECK_ALL_IMM(com, r0, r1, sz_tainted, sz_untainted)             \
+                                                                         \
+    INL_LDR(com, r0, r1);                                                \
+    printf("r0 = 0x%08X\n", r0);                                         \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_tainted));                            \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_tainted, sz_untainted)); \
+                                                                         \
+    INL_LDR_I(com, r0, r1);                                              \
+    printf("r0 = 0x%08X\n", r0);                                         \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_tainted));                            \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_tainted, sz_untainted)); \
+                                                                         \
+    INL_LDR_I_PRE(com, r0, r1);                                          \
+    printf("r0 = 0x%08X\n", r0);                                         \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_tainted));                            \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_tainted, sz_untainted)); \
+                                                                         \
+    INL_LDR_I_POST(com, r0, r1);                                         \
+    printf("r0 = 0x%08X\n", r0);                                         \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_tainted));                            \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_tainted, sz_untainted))
 #else
-#define CHECK_ALL_IMM(com, r0, r1)             \
-                                               \
-    INL_LDR(com, r0, r1);                      \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-                                               \
-    INL_LDR_I(com, r0, r1);                    \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
+#define CHECK_ALL_IMM(com, r0, r1)                                       \
+                                                                         \
+    INL_LDR(com, r0, r1);                                                \
+    printf("r0 = 0x%08X\n", r0);                                         \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_tainted));                            \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_tainted, sz_untainted)); \
+                                                                         \
+    INL_LDR_I(com, r0, r1);                                              \
+    printf("r0 = 0x%08X\n", r0);                                         \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_tainted));                            \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_tainted, sz_untainted))
 #endif
 
 bool test_asm_ldr_imm()
@@ -669,28 +686,33 @@ bool test_asm_ldr_imm()
     unsigned int **pA = (unsigned int **)&A;
     MAKE_TAINTED(A, sizeof(A));
 
-    CHECK_ALL_IMM(ldr, v, pA);
-    CHECK_ALL_IMM(ldrb, v, pA);
-    CHECK_ALL_IMM(ldrh, v, pA);
-    CHECK_ALL_IMM(ldrsb, v, pA);
-    CHECK_ALL_IMM(ldrsh, v, pA);
+    CHECK_ALL_IMM(ldr, v, pA, 4, 0);
+    CHECK_ALL_IMM(ldrb, v, pA, 1, 3);
+    CHECK_ALL_IMM(ldrh, v, pA, 2, 2);
+    CHECK_ALL_IMM(ldrsb, v, pA, 1, 3);
+    CHECK_ALL_IMM(ldrsh, v, pA, 2, 2);
 
 #ifdef MTHUMB
-    CHECK_ALL_IMM(ldrt, v, pA);
-    CHECK_ALL_IMM(ldrbt, v, pA);
-    CHECK_ALL_IMM(ldrsbt, v, pA);
-    CHECK_ALL_IMM(ldrht, v, pA);
-    CHECK_ALL_IMM(ldrsht, v, pA);
+    CHECK_ALL_IMM(ldrt, v, pA, 4, 0);
+    CHECK_ALL_IMM(ldrbt, v, pA, 1, 3);
+    CHECK_ALL_IMM(ldrsbt, v, pA, 1, 3);
+    CHECK_ALL_IMM(ldrht, v, pA, 2, 2);
+    CHECK_ALL_IMM(ldrsht, v, pA, 2, 2);
 #endif
 
     INL_LDR(ldrex, v, pA);
-    TEST_ASSERT(IS_TAINTED(&v, sizeof(int)));
+    printf("r0 = 0x%08X\n", v);
+    TEST_ASSERT(IS_TAINTED(&v, 4));
 
     INL_LDR(ldrexb, v, pA);
-    TEST_ASSERT(IS_TAINTED(&v, sizeof(int)));
+    printf("r0 = 0x%08X\n", v);
+    TEST_ASSERT(IS_TAINTED(&v, 1));
+    TEST_ASSERT(IS_TAINTED(&v, 1));
 
     INL_LDR(ldrexh, v, pA);
-    TEST_ASSERT(IS_TAINTED(&v, sizeof(int)));
+    printf("r0 = 0x%08X\n", v);
+    TEST_ASSERT(IS_TAINTED(&v, 2));
+
     TEST_END;
 }
 
@@ -750,10 +772,10 @@ bool test_asm_ldr_imm_ex()
                                               \
     printf("Test '" #com " r0, [r4, r3]'\n"); \
     r0 = 0;                                   \
-    asm volatile("ldr r4, %1\n\t"             \
-                 "ldr r3, %2\n\t"             \
-                 "" #com " r0, [r4, r3]\n\t"  \
-                 "str r0, %0\n\t"             \
+    asm volatile("ldr r4, %1;"                \
+                 "ldr r3, %2;"                \
+                 "" #com " r0, [r4, r3];"     \
+                 "str r0, %0;"                \
                  : "=m"(r0)                   \
                  : "m"(r1), "m"(r2)           \
                  : "r0", "r3", "r4")
@@ -825,12 +847,14 @@ bool test_asm_ldr_reg()
     INL_REG_PRE(com, r0, r1, r2);               \
     TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
 
-#define CHECK_ALL3(com, r0, r1, r2)            \
-    printf("R1 is tainted:\n");                \
-    INL_REG(com, r0, r1, r2);                  \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-    INL_REG_PRE(com, r0, r1, r2);              \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
+#define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd)            \
+    printf("R1 is tainted:\n");                                 \
+    INL_REG(com, r0, r1, r2);                                   \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd)); \
+    INL_REG_PRE(com, r0, r1, r2);                               \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
 #else
 #define CHECK_ALL1(com, r0, r1, r2) \
     printf("Both tainted:\n");      \
@@ -842,13 +866,21 @@ bool test_asm_ldr_reg()
     INL_REG(com, r0, r1, r2);       \
     TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
 
-#define CHECK_ALL3(com, r0, r1, r2) \
-    printf("R1 is tainted:\n");     \
-    INL_REG(com, r0, r1, r2);       \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
+#define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd) \
+    printf("R1 is tainted:\n");                      \
+    INL_REG(com, r0, r1, r2);                        \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));            \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
 #endif
 
 bool test_asm_ldr_reg_ex()
+/*
+    Checks:
+    ldrXX r0, [r1, r2]
+    ldrXX r0, [r1, r2]!
+
+    where r1, r2 are tainted/untainted
+*/
 {
     TEST_START;
     unsigned int A[14] = {0, 1, 2, 3, 4, 5, 6, 7, 8}, v;
@@ -878,18 +910,18 @@ bool test_asm_ldr_reg_ex()
     // ------------------------------ 3
     MAKE_TAINTED(A + reg_offs, sizeof(int));
 
-    CHECK_ALL3(ldr, v, pA, reg_offs);
-    CHECK_ALL3(ldrb, v, pA, reg_offs);
-    CHECK_ALL3(ldrh, v, pA, reg_offs);
-    CHECK_ALL3(ldrsb, v, pA, reg_offs);
-    CHECK_ALL3(ldrsh, v, pA, reg_offs);
+    CHECK_ALL3(ldr, v, pA, reg_offs, 4, 0);
+    CHECK_ALL3(ldrb, v, pA, reg_offs, 1, 3);
+    CHECK_ALL3(ldrh, v, pA, reg_offs, 2, 2);
+    CHECK_ALL3(ldrsb, v, pA, reg_offs, 1, 3);
+    CHECK_ALL3(ldrsh, v, pA, reg_offs, 2, 2);
 
     TEST_END;
 }
 
 #pragma endregion ldr_reg
 
-#pragma region asm_ldrd_imm
+#pragma region asm_ldrd
 
 #define INL_LDRD(com, r0, r1, r2)             \
                                               \
@@ -976,39 +1008,53 @@ bool test_asm_ldr_reg_ex()
     TEST_ASSERT(IS_TAINTED(&r1, sizeof(int)))
 #endif
 
-#ifndef MTHUMB
-#define CHECK_ALL_2R_EX(com, r0, r1, r2)       \
+#define CHECK_ALL_2R_PART1(com, r0, r1, r2)    \
                                                \
     INL_LDRD_I(com, r0, r1, r2);               \
     TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
     TEST_ASSERT(!IS_TAINTED(&r1, sizeof(int)))
-#else
-#define CHECK_ALL_2R_EX(com, r0, r1, r2)       \
-    INL_LDRD_I(com, r0, r1, r2);               \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-    TEST_ASSERT(!IS_TAINTED(&r1, sizeof(int)))
-#endif
+
+#define CHECK_ALL_2R_PART2(com, r0, r1, r2)     \
+                                                \
+    INL_LDRD_I(com, r0, r1, r2);                \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
+    TEST_ASSERT(IS_TAINTED(&r1, sizeof(int)))
 
 bool test_asm_ldrd_imm()
+/*
+    Checks ldrd r0, r1, [r2, #imm]
+
+    if [r2 + imm] is tainted then r0 is tainted
+    if [r2 + 4 + imm] is tainted then r1 is tainted
+*/
 {
     TEST_START;
     unsigned int A[3] = {0x12345678, 0x9ABCDEF0, 0x87654321}, v0, v1;
     unsigned int **pA = (unsigned int **)&A;
 
+    printf("All 2 regs\n");
     MAKE_TAINTED(A, sizeof(A));
     CHECK_ALL_2R(ldrd, v0, v1, pA);
 
-    printf("Extended\n");
+    printf("Partly 1\n");
     CLEAR(A, sizeof(A));
     MAKE_TAINTED(&A[1], sizeof(int));
-    CHECK_ALL_2R_EX(ldrd, v0, v1, pA);
+    CHECK_ALL_2R_PART1(ldrd, v0, v1, pA);
+
+    printf("Partly 2\n");
+    CLEAR(A, sizeof(A));
+    MAKE_TAINTED(&A[2], sizeof(int));
+    CHECK_ALL_2R_PART2(ldrd, v0, v1, pA);
 
     TEST_END;
 }
 
 bool test_asm_ldrd_reg()
+/*
+    Checks ldrdex r0, r1, [r2]
+    Unable to test it because bus error occures
+*/
 {
-    //buggy test
     TEST_START;
     TEST_END;
 
@@ -1032,36 +1078,35 @@ bool test_asm_ldrd_reg()
     TEST_END;
 }
 
-#ifndef MTHUMB
-#define CHECK_ALL__EX(com, r0, r1, r2)         \
-                                               \
-    INL_LDRD_I(com, r0, r1, r2);               \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-    TEST_ASSERT(!IS_TAINTED(&r1, sizeof(int)))
-#else
-#define CHECK_ALL_2R_EX(com, r0, r1, r2)       \
-    INL_LDRD_I(com, r0, r1, r2);               \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-    TEST_ASSERT(!IS_TAINTED(&r1, sizeof(int)))
-#endif
-
 bool test_asm_ldrd_ex()
+/*
+    Checks taint on byte - level
+*/
 {
     TEST_START;
-    unsigned int A[3] = {0x12345678, 0x9ABCDEF0}, v0, v1;
+    unsigned int A[3] = {0, 0x00BC00F0, 0x87004300}, v0, v1;
     unsigned int **pA = (unsigned int **)&A;
 
-    MAKE_TAINTED(A, sizeof(int));
-    CHECK_ALL_2R(ldrd, v0, v1, pA);
+    MAKE_TAINTED((char *)A + 4, 1);
+    MAKE_TAINTED((char *)A + 6, 1);
+    MAKE_TAINTED((char *)A + 9, 1);
+    MAKE_TAINTED((char *)A + 11, 1);
 
-    CLEAR(A, sizeof(A));
-    MAKE_TAINTED(&A[1], sizeof(int));
-    CHECK_ALL_2R_EX(ldrd, v0, v1, pA);
+    INL_LDRD_I(ldrd, v0, v1, pA);
+    TEST_ASSERT(IS_TAINTED((char *)&v0, 1));
+    TEST_ASSERT(!IS_TAINTED((char *)&v0 + 1, 1));
+    TEST_ASSERT(IS_TAINTED((char *)&v0 + 2, 1));
+    TEST_ASSERT(!IS_TAINTED((char *)&v0 + 3, 1));
+
+    TEST_ASSERT(!IS_TAINTED((char *)&v1, 1));
+    TEST_ASSERT(IS_TAINTED((char *)&v1 + 1, 1));
+    TEST_ASSERT(!IS_TAINTED((char *)&v1 + 2, 1));
+    TEST_ASSERT(IS_TAINTED((char *)&v1 + 3, 1));
 
     TEST_END;
 }
 
-#pragma endregion ldrd_imm
+#pragma endregion ldrd
 
 #pragma region asm_ldm
 
