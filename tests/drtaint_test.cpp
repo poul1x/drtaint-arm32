@@ -50,7 +50,7 @@ Test gTests[] = {
     {"ldr_reg_ex", test_asm_ldr_reg_ex},
     {"ldrd_imm", test_asm_ldrd_imm},
     {"ldrd_reg", test_asm_ldrd_reg},
-    {"ldrd_ex", test_asm_ldrd_ex}, 
+    {"ldrd_ex", test_asm_ldrd_ex},
     {"ldm", test_asm_ldm},
     {"ldm_w", test_asm_ldm_w},
     {"ldm_ex", test_asm_ldm_ex},
@@ -655,7 +655,7 @@ bool test_untaint_stack()
     TEST_ASSERT(IS_TAINTED(&r0, sz_tainted));                            \
     TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_tainted, sz_untainted))
 #else
-#define CHECK_ALL_IMM(com, r0, r1)                                       \
+#define CHECK_ALL_IMM(com, r0, r1, sz_tainted, sz_untainted)             \
                                                                          \
     INL_LDR(com, r0, r1);                                                \
     printf("r0 = 0x%08X\n", r0);                                         \
@@ -792,18 +792,42 @@ bool test_asm_ldr_imm_ex()
                  : "=m"(r0)                    \
                  : "m"(r1), "m"(r2)            \
                  : "r0", "r1", "r2")
+
+#define INL_REG_POST(com, r0, r1, r2)         \
+                                              \
+    printf("Test '" #com " r0, [r1], r2'\n"); \
+    r0 = 0;                                   \
+    asm volatile("ldr r1, %2;"                \
+                 "ldr r2, %1;"                \
+                 "" #com " r0, [r2], r1;"     \
+                 "str r0, %0;"                \
+                 : "=m"(r0)                   \
+                 : "m"(r1), "m"(r2)           \
+                 : "r0", "r1", "r2")
+
 #endif
 
 #ifndef MTHUMB
+#define CHECK_ALL_R(com, r0, r1, r2)            \
+    INL_REG(com, r0, r1, r2);                   \
+    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)));  \
+    INL_REG_PRE(com, r0, r1, r2);               \
+    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)));  \
+    INL_REG_POST(com, r0, r1, r2);              \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
+    INL_LDR_I(com, r0, r1);                     \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
+    INL_LDR_I_PRE(com, r0, r1);                 \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
+    INL_LDR_I_POST(com, r0, r1);                \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
+
+#else
 #define CHECK_ALL_R(com, r0, r1, r2)           \
     INL_REG(com, r0, r1, r2);                  \
     TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-    INL_REG_PRE(com, r0, r1, r2);              \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
-#else
-#define CHECK_ALL_R(com, r0, r1, r2) \
-    INL_REG(com, r0, r1, r2);        \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
+    INL_LDR_I(com, r0, r1);                    \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
 #endif
 
 bool test_asm_ldr_reg()
@@ -1331,48 +1355,54 @@ bool test_asm_ldm_ex_w()
 #endif
 
 #ifndef MTHUMB
-#define CHECK_S_ALL_IMM(com, r0, base)              \
-    INL_STR(com, r0, base);                         \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int))); \
-                                                    \
-    INL_STR_IMM(com, r0, base);                     \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int))); \
-                                                    \
-    INL_STR_IMM_PRE(com, r0, base);                 \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int))); \
-                                                    \
-    INL_STR_IMM_POST(com, r0, base);                \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)))
+#define CHECK_S_ALL_IMM(com, r0, base, sz_ttd, sz_nttd)              \
+    INL_STR(com, r0, base);                                          \
+    printf("%08x %08x\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[0], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[0] + sz_ttd, sz_nttd)); \
+                                                                     \
+    INL_STR_IMM(com, r0, base);                                      \
+    printf("%08x %08x\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[1], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[1] + sz_ttd, sz_nttd)); \
+                                                                     \
+    INL_STR_IMM_PRE(com, r0, base);                                  \
+    printf("%08x %08x\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[1], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[1] + sz_ttd, sz_nttd)); \
+                                                                     \
+    INL_STR_IMM_POST(com, r0, base);                                 \
+    printf("%08x %08x\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[0], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[0] + sz_ttd, sz_nttd))
 #else
-#define CHECK_S_ALL_IMM(com, r0, base)              \
-    INL_STR(com, r0, base);                         \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int))); \
-                                                    \
-    INL_STR_IMM(com, r0, base);                     \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)))
+#define CHECK_S_ALL_IMM(com, r0, base, sz_ttd, sz_nttd)              \
+    INL_STR(com, r0, base);                                          \
+    printf("%08x %08x\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[0], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[0] + sz_ttd, sz_nttd)); \
+                                                                     \
+    INL_STR_IMM(com, r0, base);                                      \
+    printf("%08x %08x\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[1], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[1] + sz_ttd, sz_nttd))
 #endif
 
 bool test_asm_str_imm()
 {
     TEST_START;
-    int A[2] = {0}, v = 1;
+    int A[2] = {0}, v = 0x12345678;
     MAKE_TAINTED(&v, sizeof(int));
 
 #ifdef MTHUMB
-    CHECK_S_ALL_IMM(strt, v, A);
-    CHECK_S_ALL_IMM(strbt, v, A);
-    CHECK_S_ALL_IMM(strht, v, A);
+    CHECK_S_ALL_IMM(strt, v, A, 4, 0);
+    CHECK_S_ALL_IMM(strbt, v, A, 1, 3);
+    CHECK_S_ALL_IMM(strht, v, A, 2, 2);
 #endif
 
-    CHECK_S_ALL_IMM(str, v, A);
-    CHECK_S_ALL_IMM(strb, v, A);
-    CHECK_S_ALL_IMM(strh, v, A);
+    CHECK_S_ALL_IMM(str, v, A, 4, 0);
+    CHECK_S_ALL_IMM(strb, v, A, 1, 3);
+    CHECK_S_ALL_IMM(strh, v, A, 2, 2);
 
     TEST_END;
 }
@@ -1390,22 +1420,23 @@ bool test_asm_str_imm()
                  : "m"(r0), "r"(base)         \
                  : "r0", "r1", "r2")
 
-#define CHECK_STREX(com, rd, r0, base)              \
-    INL_STREX(com, rd, r0, base);                   \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int))); \
+#define CHECK_STREX(com, rd, r0, base, sz_ttd, sz_nttd)              \
+    INL_STREX(com, rd, r0, base);                                    \
+    printf("%08x %08x\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[0], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[0] + sz_ttd, sz_nttd)); \
     TEST_ASSERT(!IS_TAINTED(&rd, sizeof(int)))
 
 bool test_asm_strex()
 {
     TEST_START;
-    int A[2] = {0}, v = 1, r = 0;
+    int A[2] = {0}, v = 0x12345678, r = 0x87654321;
     MAKE_TAINTED(&v, sizeof(int));
     MAKE_TAINTED(&r, sizeof(int));
 
-    CHECK_STREX(strex, r, v, A);
-    CHECK_STREX(strexb, r, v, A);
-    CHECK_STREX(strexh, r, v, A);
+    CHECK_STREX(strex, r, v, A, 4, 0);
+    CHECK_STREX(strexb, r, v, A, 1, 3);
+    CHECK_STREX(strexh, r, v, A, 2, 2);
 
     TEST_END;
 }
@@ -1457,34 +1488,38 @@ bool test_asm_strex()
 #endif
 
 #ifndef MTHUMB
-#define CHECK_S_ALL_REG(com, r0, base, roffs)       \
-    INL_STR_REG(com, r0, base, roffs);              \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int))); \
-                                                    \
-    INL_STR_REG_PRE(com, r0, base, roffs);          \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int))); \
-                                                    \
-    INL_STR_REG_POST(com, r0, base, roffs);         \
-    printf("%d %d\n", base[0], base[1]);            \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)))
+#define CHECK_S_ALL_REG(com, r0, base, roffs, sz_ttd, sz_nttd)       \
+    INL_STR_REG(com, r0, base, roffs);                               \
+    printf("%08X %08X\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[1], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[1] + sz_ttd, sz_nttd)); \
+                                                                     \
+    INL_STR_REG_PRE(com, r0, base, roffs);                           \
+    printf("%08X %08X\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[1], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[1] + sz_ttd, sz_nttd)); \
+                                                                     \
+    INL_STR_REG_POST(com, r0, base, roffs);                          \
+    printf("%08X %08X\n", base[0], base[1]);                         \
+    TEST_ASSERT(IS_TAINTED(&base[0], sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[0] + sz_ttd, sz_nttd))
 #else
-#define CHECK_S_ALL_REG(com, r0, base, roffs) \
-    INL_STR_REG(com, r0, base, roffs);        \
-    printf("%d %d\n", base[0], base[1]);      \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)))
+#define CHECK_S_ALL_REG(com, r0, base, roffs, sz_ttd, sz_nttd) \
+    INL_STR_REG(com, r0, base, roffs);                         \
+    printf("%08X %08X\n", base[0], base[1]);                   \
+    TEST_ASSERT(IS_TAINTED(&base[1], sz_ttd));                 \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&base[1] + sz_ttd, sz_nttd))
 #endif
 
 bool test_asm_str_reg()
 {
     TEST_START;
-    int A[2] = {0}, v = 1, r = 4;
+    int A[2] = {0}, v = 0x12345678, r = 4;
     MAKE_TAINTED(&v, sizeof(int));
 
-    CHECK_S_ALL_REG(str, v, A, r);
-    CHECK_S_ALL_REG(strb, v, A, r);
-    CHECK_S_ALL_REG(strh, v, A, r);
+    CHECK_S_ALL_REG(str, v, A, r, 4, 0);
+    CHECK_S_ALL_REG(strb, v, A, r, 1, 3);
+    CHECK_S_ALL_REG(strh, v, A, r, 2, 2);
 
     TEST_END;
 }
@@ -1540,36 +1575,36 @@ bool test_asm_str_reg()
 #endif
 
 #ifndef MTHUMB
-#define CHECK_SD_ALL_IMM(com, r0, r1, base)          \
-    INL_STRD(com, r0, r1, base);                     \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));  \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
-                                                     \
-    INL_STRD_IMM(com, r0, r1, base);                 \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
-    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));  \
-                                                     \
-    INL_STRD_IMM_PRE(com, r0, r1, base);             \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
-    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));  \
-                                                     \
-    INL_STRD_IMM_POST(com, r0, r1, base);            \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));  \
+#define CHECK_SD_ALL_IMM(com, r0, r1, base)                \
+    INL_STRD(com, r0, r1, base);                           \
+    printf("%08X %08X %08X\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));        \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));        \
+                                                           \
+    INL_STRD_IMM(com, r0, r1, base);                       \
+    printf("%08X %08X %08X\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));        \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));        \
+                                                           \
+    INL_STRD_IMM_PRE(com, r0, r1, base);                   \
+    printf("%08X %08X %08X\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));        \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));        \
+                                                           \
+    INL_STRD_IMM_POST(com, r0, r1, base);                  \
+    printf("%08X %08X %08X\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));        \
     TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)))
 #else
-#define CHECK_SD_ALL_IMM(com, r0, r1, base)          \
-    INL_STRD(com, r0, r1, base);                     \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));  \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
-                                                     \
-    INL_STRD_IMM(com, r0, r1, base);                 \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
+#define CHECK_SD_ALL_IMM(com, r0, r1, base)                \
+    INL_STRD(com, r0, r1, base);                           \
+    printf("%08X %08X %08X\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));        \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));        \
+                                                           \
+    INL_STRD_IMM(com, r0, r1, base);                       \
+    printf("%08X %08X %08X\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));        \
     TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)))
 #endif
 
@@ -1623,21 +1658,21 @@ bool test_asm_strd_imm()
 #endif
 
 #ifndef MTHUMB
-#define CHECK_SD_ALL_REG(com, r0, r1, base)          \
-                                                     \
-    INL_STRD_REG(com, r0, r1, base);                 \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
-    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));  \
-                                                     \
-    INL_STRD_REG_PRE(com, r0, r1, base);             \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));  \
-    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));  \
-                                                     \
-    INL_STRD_REG_POST(com, r0, r1, base);            \
-    printf("%d %d %d\n", base[0], base[1], base[2]); \
-    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));  \
+#define CHECK_SD_ALL_REG(com, r0, r1, base)                \
+                                                           \
+    INL_STRD_REG(com, r0, r1, base);                       \
+    printf("%08X %08X %08X\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));        \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));        \
+                                                           \
+    INL_STRD_REG_PRE(com, r0, r1, base);                   \
+    printf("%08X %08X %08X\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)));        \
+    TEST_ASSERT(IS_TAINTED(&base[2], sizeof(int)));        \
+                                                           \
+    INL_STRD_REG_POST(com, r0, r1, base);                  \
+    printf("%08X %08X %08X\n", base[0], base[1], base[2]); \
+    TEST_ASSERT(IS_TAINTED(&base[0], sizeof(int)));        \
     TEST_ASSERT(IS_TAINTED(&base[1], sizeof(int)))
 #endif
 

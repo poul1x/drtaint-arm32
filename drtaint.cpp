@@ -24,12 +24,6 @@ instr_affects_on_flags(int opcode);
 static bool
 instr_predicate_is_true(instr_t *where, uint flags);
 
-static void
-what_are_srcs(instr_t *where);
-
-static void
-what_are_dsts(instr_t *where);
-
 extern bool
 instr_is_simd(instr_t *where);
 
@@ -294,7 +288,21 @@ void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
 
         // propagate 3d policy: ldr r0, [r1, r2].
         // If r2 is tainted then r0 is tainted too
-        if (opnd_num_regs_used(mem2) == 2)
+        bool need_3p = false;
+        if (dr_get_isa_mode(drcontext) == DR_ISA_ARM_THUMB &&
+            opnd_num_regs_used(mem2) == 2)
+        {
+            need_3p = true;
+        }
+        
+        else
+        {
+            load_store_helper lsh(where);
+            if (lsh.is_reg_offs() && lsh.is_pre_or_offs_addr())
+                need_3p = true;
+        }
+
+        if (need_3p)
         {
             reg_id_t reg_ind = opnd_get_index(mem2);
             auto sreg_ind = drreg_reservation{ilist, where};
@@ -413,30 +421,34 @@ void propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
                                                      opnd_create_reg(sreg1)));
 
         // if it's a strex then we have to untaint return status register
-        //int opcode = instr_get_opcode(where);
-        //if (opcode == OP_strex ||
-        //    opcode == OP_strexb ||
-        //    opcode == OP_strexh)
-        //{
-        //    reg_id_t rd = opnd_get_reg(instr_get_dst(where, 1));
-        //    reg_id_t srd = sreg1;
-        //    reg_id_t nullreg = sapp2;
-        //
-        //    // nullreg = 0
-        //    instrlist_meta_preinsert(ilist, where,
-        //                             XINST_CREATE_move(drcontext, // mov nullreg , 0
-        //                                               opnd_create_reg(nullreg),
-        //                                               OPND_CREATE_INT8(0)));
-        //
-        //    // get shadow register address of %rd% and place it to %srd%
-        //    drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
-        //
-        //    // write 0 to shadow value of %rd%
-        //    instrlist_meta_preinsert_xl8(ilist, where,
-        //                                 instr_store<WORD>(drcontext,
-        //                                                   OPND_CREATE_MEM8(srd, 0),
-        //                                                   opnd_create_reg(nullreg)));
-        //}
+        // however, return status register becomes untainted without our help (magic?)
+        // so, these instructions are optional
+        /*
+        int opcode = instr_get_opcode(where);
+        if (opcode == OP_strex ||
+            opcode == OP_strexb ||
+            opcode == OP_strexh)
+        {
+            reg_id_t rd = opnd_get_reg(instr_get_dst(where, 1));
+            reg_id_t srd = sreg1;
+            reg_id_t nullreg = sapp2;
+        
+            // nullreg = 0
+            instrlist_meta_preinsert(ilist, where,
+                                     XINST_CREATE_move(drcontext, // mov nullreg , 0
+                                                       opnd_create_reg(nullreg),
+                                                       OPND_CREATE_INT32(0)));
+        
+            // get shadow register address of %rd% and place it to %srd%
+            drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
+        
+            // write 0 to shadow value of %rd%
+            instrlist_meta_preinsert_xl8(ilist, where,
+                                         XINST_CREATE_store(drcontext,
+                                                           OPND_CREATE_MEM32(srd, 0),
+                                                           opnd_create_reg(nullreg)));
+        }
+        */
     }
 }
 
@@ -445,7 +457,7 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
     strd reg1, reg2, [mem2]  
 
-    We need to save the tag value stored in 
+    We need to save the tag values stored in 
     shadow registers of reg2 and reg3 to shadow addresses of [mem2] and [mem2 + 4] 
 */
 {
@@ -463,8 +475,11 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
 
         // get next 4 bytes after [mem2]
-        instrlist_meta_preinsert(ilist, where, XINST_CREATE_add_2src // sapp2n = sapp2 + 4
-                                 (drcontext, opnd_create_reg(sapp2n), opnd_create_reg(sapp2), OPND_CREATE_INT8(4)));
+        instrlist_meta_preinsert(ilist, where,
+                                 XINST_CREATE_add_2src(drcontext, // sapp2n = sapp2 + 4
+                                                       opnd_create_reg(sapp2n),
+                                                       opnd_create_reg(sapp2),
+                                                       OPND_CREATE_INT32(4)));
 
         // get shadow memory address of [mem2] and place it to %sapp2%
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
@@ -473,8 +488,10 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
 
         // write the value of reg1 to [mem2] shadow address
-        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str sreg1, [sapp2]
-                                     (drcontext, OPND_CREATE_MEM8(sapp2, 0), opnd_create_reg(sreg1)));
+        instrlist_meta_preinsert_xl8(ilist, where,
+                                     XINST_CREATE_store(drcontext, // str sreg1, [sapp2]
+                                                        OPND_CREATE_MEM32(sapp2, 0),
+                                                        opnd_create_reg(sreg1)));
 
         // get shadow memory address of [mem2 + 4] and place it to %sapp2n%
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2n, sapp2);
@@ -483,26 +500,35 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg1);
 
         // write the shadow value of reg2 to [mem2 + 4] shadow address
-        instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str sreg1, [sapp2n]
-                                     (drcontext, OPND_CREATE_MEM8(sapp2n, 0), opnd_create_reg(sreg1)));
+        instrlist_meta_preinsert_xl8(ilist, where,
+                                     XINST_CREATE_store(drcontext, // str sreg1, [sapp2n]
+                                                        OPND_CREATE_MEM32(sapp2n, 0),
+                                                        opnd_create_reg(sreg1)));
 
         // if it's a strexd then we have to untaint return status register
-        if (instr_get_opcode(where) == OP_strexd)
+        // however, return status register becomes untainted without our help (magic?)
+        // so, these instructions are optional
+        /*if (instr_get_opcode(where) == OP_strexd)
         {
             reg_id_t rd = opnd_get_reg(instr_get_dst(where, 1));
             reg_id_t srd = sreg1;
             reg_id_t nullreg = sapp2;
 
             // nullreg = 0
-            instrlist_meta_preinsert(ilist, where, XINST_CREATE_move(drcontext, opnd_create_reg(nullreg), OPND_CREATE_INT8(0)));
+            instrlist_meta_preinsert(ilist, where,
+                                     XINST_CREATE_move(drcontext,
+                                                       opnd_create_reg(nullreg),
+                                                       OPND_CREATE_INT8(0)));
 
             // get shadow register address of %rd% and place it to %srd%
             drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
 
             // write 0 to shadow value of %rd%
-            instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte // str nullreg, [strd]
-                                         (drcontext, OPND_CREATE_MEM8(srd, 0), opnd_create_reg(nullreg)));
-        }
+            instrlist_meta_preinsert_xl8(ilist, where,
+                                         XINST_CREATE_store(drcontext, // str nullreg, [strd]
+                                                            OPND_CREATE_MEM32(srd, 0),
+                                                            opnd_create_reg(nullreg)));
+        }*/
     }
 }
 
@@ -1372,64 +1398,4 @@ instr_predicate_is_true(instr_t *where, uint cspr)
     }
 
     return false;
-}
-
-static void
-what_are_srcs(instr_t *where)
-{
-    int n = instr_num_srcs(where);
-
-    if (n == 0)
-        dr_printf("No args\n");
-    else
-    {
-        dr_printf("%d args:", n);
-        for (int i = 0; i < n; i++)
-        {
-            opnd_t opnd = instr_get_src(where, i);
-            const char *s = opnd_is_reg(opnd)
-                                ? "reg"
-                                : opnd_is_null(opnd)
-                                      ? "null"
-                                      : opnd_is_immed(opnd)
-                                            ? "imm"
-                                            : opnd_is_memory_reference(opnd)
-                                                  ? "mem"
-                                                  : "unknown";
-
-            dr_printf("%s ", s);
-        }
-
-        dr_printf("\n");
-    }
-}
-
-static void
-what_are_dsts(instr_t *where)
-{
-    int n = instr_num_dsts(where);
-
-    if (n == 0)
-        dr_printf("No args\n");
-    else
-    {
-        dr_printf("%d args:", n);
-        for (int i = 0; i < n; i++)
-        {
-            opnd_t opnd = instr_get_dst(where, i);
-            const char *s = opnd_is_reg(opnd)
-                                ? "reg"
-                                : opnd_is_null(opnd)
-                                      ? "null"
-                                      : opnd_is_immed(opnd)
-                                            ? "imm"
-                                            : opnd_is_memory_reference(opnd)
-                                                  ? "mem"
-                                                  : "unknown";
-
-            dr_printf("%s ", s);
-        }
-
-        dr_printf("\n");
-    }
 }

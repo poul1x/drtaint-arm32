@@ -1,4 +1,4 @@
-1) strh r0, [r1], #imm | ARM | taint does not distribute from tainted register r0 to memory [r1]
-2) strh r0, [r1], r2 | ARM | taint does not distribute from tainted register r0 to memory [r1]
-3) strd r0, r1, [r2], #imm | ARM | taint does not distribute from tainted registers r0, r1 to memory [r1], [r1+4]
-4) strd r0, r1, [r2], r3 | ARM | taint does not distribute from tainted registers r0, r1 to memory [r1], [r1+4]
+1) strh r0, [r1], #imm | ARM | taint distributes on address [r1,#imm] instead of [r1] (suppose DynamoRIO's fault)
+2) strh r0, [r1], r2 | ARM | taint distributes on address [r1, r2] instead of [r1] (suppose DynamoRIO's fault)
+3) strd r0, r1, [r2], #imm | ARM | taint distributes on addresses [r2, #imm], [r2, #imm + 4] instead of [r2], [r2 + 4] (suppose DynamoRIO's fault)
+4) strd r0, r1, [r2], r3 | ARM | taint distributes on addresses [r2, r3], [r2, r3 + 4] instead of [r2], [r2 + 4] (suppose DynamoRIO's fault)
