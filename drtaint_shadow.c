@@ -127,6 +127,29 @@ bool drtaint_shadow_set_app_taint4(void *drcontext, app_pc app, uint result)
                                          &sz, (byte *)&result) == DRMF_SUCCESS;
     return ret;
 }
+
+void drtaint_shadow_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag)
+{
+    uint cnt4 = size / 4, cnt1 = size % 4;
+    uint start = 0, end = cnt4 * 4, i;
+    uint tag4 = tag + (tag << 8) + (tag << 16) + (tag << 24);
+    bool ok;
+
+    for (i = start; i < end; i += 4)
+    {
+        ok = drtaint_shadow_set_app_taint4(drcontext, &app[i], tag4);
+        DR_ASSERT(ok);
+    }
+
+    start = end;
+    end += cnt1;
+    for (i = start; i < end; i++)
+    {
+        ok = drtaint_shadow_set_app_taint(drcontext, &app[i], tag);
+        DR_ASSERT(ok);
+    }
+}
+
 /* ======================================================================================
  * shadow memory implementation
  * ==================================================================================== */

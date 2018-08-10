@@ -124,6 +124,11 @@ bool drtaint_set_app_taint4(void *drcontext, app_pc app, uint result)
     return drtaint_shadow_set_app_taint4(drcontext, app, result);
 }
 
+void drtaint_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag)
+{
+    drtaint_shadow_set_app_area_taint(drcontext, app, size, tag);
+}
+
 void drtaint_save_instr(void *drcontext, int opcode)
 {
     drtaint_shadow_save_instr(drcontext, opcode);
@@ -294,7 +299,7 @@ void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
         {
             need_3p = true;
         }
-        
+
         else
         {
             load_store_helper lsh(where);
@@ -895,6 +900,18 @@ instr_handle_constant_func(void *drcontext, void *tag, instrlist_t *ilist, instr
     return false;
 }
 
+static void
+untaint_stack(void *drcontext, ptr_int_t imm)
+{
+    bool ok;
+    dr_mcontext_t mcontext = {sizeof(dr_mcontext_t), DR_MC_CONTROL};
+    ok = dr_get_mcontext(drcontext, &mcontext);
+    DR_ASSERT(ok);
+
+    app_pc sp_val = (app_pc)reg_get_value(DR_REG_SP, &mcontext);
+    drtaint_set_app_area_taint(drcontext, sp_val - imm, imm, 0);
+}
+
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       bool for_trace, bool translating, void *user_data)
@@ -925,27 +942,17 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     }
 
     // untaint stack area when allocating a new frame
-    //if (opcode == OP_sub || opcode == OP_subs)
-    //{
-    //    if (opnd_get_reg(instr_get_dst(where, 0)) == DR_REG_SP &&
-    //        opnd_get_reg(instr_get_src(where, 0)) == DR_REG_SP &&
-    //        opnd_is_immed(instr_get_src(where, 1)))
-    //    {
-    //        bool ok;
-    //        dr_mcontext_t mcontext = {sizeof(dr_mcontext_t), DR_MC_CONTROL};
-    //        ok = dr_get_mcontext(drcontext, &mcontext);
-    //        DR_ASSERT(ok);
-    //
-    //        ptr_int_t imm = opnd_get_immed_int(instr_get_src(where, 1));
-    //        app_pc sp_val = (app_pc)reg_get_value(DR_REG_SP, &mcontext);
-    //
-    //        for (int i = 1; i < imm + 2; i++)
-    //        {
-    //            ok = drtaint_set_app_taint(drcontext, &sp_val[-i], 0);
-    //            DR_ASSERT(ok);
-    //        }
-    //    }
-    //}
+    if (opcode == OP_sub || opcode == OP_subs)
+    {
+        if (opnd_get_reg(instr_get_dst(where, 0)) == DR_REG_SP &&
+            opnd_get_reg(instr_get_src(where, 0)) == DR_REG_SP &&
+            opnd_is_immed(instr_get_src(where, 1)))
+        {
+            dr_insert_clean_call(drcontext, ilist, where, (void *)untaint_stack, false, 2,
+                                 OPND_CREATE_INTPTR(drcontext),
+                                 OPND_CREATE_INT32(opnd_get_immed_int(instr_get_src(where, 1))));
+        }
+    }
 
     // no support for simd instructions
     if (instr_is_simd(where))

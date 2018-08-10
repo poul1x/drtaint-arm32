@@ -49,6 +49,9 @@ drtaint_get_app_taint4(void *drcontext, app_pc app, uint *result);
 bool
 drtaint_set_app_taint4(void *drcontext, app_pc app, uint result);
 
+void 
+drtaint_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag);
+
 void
 drtaint_save_instr(void *drcontext, int opcode);
 

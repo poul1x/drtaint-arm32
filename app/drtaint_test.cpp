@@ -189,19 +189,11 @@ static bool
 handle_start_trace(void *drcontext)
 {
     char *buffer = (char *)dr_syscall_get_param(drcontext, 1);
-    size_t len = dr_syscall_get_param(drcontext, 2);
+    uint len = dr_syscall_get_param(drcontext, 2);
     bool ok;
 
     // taint buffer
-    for (int i = 0; i < len; ++i)
-    {
-        if (!drtaint_set_app_taint(drcontext, (app_pc)&buffer[i], TAINT_TAG))
-        {
-            set_syscall_retval(drcontext, false);
-            return false;
-        }
-    }
-
+    drtaint_set_app_area_taint(drcontext, (app_pc)buffer, len, TAINT_TAG);
     set_syscall_retval(drcontext, true);
     return false;
 }

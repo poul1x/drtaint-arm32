@@ -196,47 +196,29 @@ bool test_simple()
 {
     TEST_START;
 
-    //char c1, c2, c3, c4;
-    //MAKE_TAINTED(&c1, sizeof(char));
-    //TEST_ASSERT(IS_TAINTED(&c1, sizeof(char)));
-    //TEST_ASSERT(!IS_TAINTED(&c1, sizeof(int)));
-    //TEST_ASSERT(!IS_TAINTED(&c2, sizeof(char)));
-    //TEST_ASSERT(!IS_TAINTED(&c3, sizeof(char)));
-    //TEST_ASSERT(!IS_TAINTED(&c4, sizeof(char)));
-    //
-    //int i1,i2;
-    //MAKE_TAINTED(&i1, sizeof(int));
-    //TEST_ASSERT(IS_TAINTED(&i1, sizeof(int)));
-    //TEST_ASSERT(IS_TAINTED(&i1, sizeof(short)));
-    //TEST_ASSERT(!IS_TAINTED(&i2, sizeof(int)));
-    //
-    //char buf[] = "abcd";
-    //MAKE_TAINTED(&buf[0], sizeof(char));
-    //MAKE_TAINTED(&buf[2], sizeof(char));
-    //
-    //TEST_ASSERT(IS_TAINTED(&buf[0], sizeof(char)));
-    //TEST_ASSERT(!IS_TAINTED(&buf[1], sizeof(char)));
-    //TEST_ASSERT(IS_TAINTED(&buf[2], sizeof(char)));
-    //TEST_ASSERT(!IS_TAINTED(&buf[3], sizeof(char)));
-
-    //int a = 0, b = 0;
-    //MAKE_TAINTED(&a, sizeof(a));
-    //
-    //asm volatile("ldr r0, %1;"
-    //             "str r0, %0;"
-    //             : "=m"(b)
-    //             : "m"(a)
-    //             : "r0");
-    //TEST_ASSERT(IS_TAINTED(&b, sizeof(int)));
-    //TEST_ASSERT(IS_TAINTED(&b, sizeof(char)));
-    //TEST_ASSERT(IS_TAINTED(((char *)&b + 1), sizeof(char)));
-    //TEST_ASSERT(IS_TAINTED(((char *)&b + 2), sizeof(char)));
-    //TEST_ASSERT(IS_TAINTED(((char *)&b + 3), sizeof(char)));
-
-    int a = 0;
-    TEST_ASSERT(IS_TAINTED(&a, 0));
-    TEST_ASSERT(IS_NOT_TAINTED(&a, 0));
-
+    char c1, c2, c3, c4;
+    MAKE_TAINTED(&c1, sizeof(char));
+    TEST_ASSERT(IS_TAINTED(&c1, sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&c1, sizeof(int)));
+    TEST_ASSERT(!IS_TAINTED(&c2, sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&c3, sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&c4, sizeof(char)));
+    
+    int i1,i2;
+    MAKE_TAINTED(&i1, sizeof(int));
+    TEST_ASSERT(IS_TAINTED(&i1, sizeof(int)));
+    TEST_ASSERT(IS_TAINTED(&i1, sizeof(short)));
+    TEST_ASSERT(!IS_TAINTED(&i2, sizeof(int)));
+    
+    char buf[] = "abcd";
+    MAKE_TAINTED(&buf[0], sizeof(char));
+    MAKE_TAINTED(&buf[2], sizeof(char));
+    
+    TEST_ASSERT(IS_TAINTED(&buf[0], sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&buf[1], sizeof(char)));
+    TEST_ASSERT(IS_TAINTED(&buf[2], sizeof(char)));
+    TEST_ASSERT(!IS_TAINTED(&buf[3], sizeof(char)));
+    
     TEST_END;
 }
 
@@ -556,13 +538,18 @@ void func_help_us1()
 bool func_help_us2()
 {
     TEST_START;
-    char buf[256];
+    char buf[248];
+    uint i;
+    uint j;
+
     printf("func_help_us2: checking buf\n");
-    for (int i = 0; i < (int)sizeof(buf); i++)
+    TEST_ASSERT(!IS_TAINTED(&i, sizeof(uint)));
+    TEST_ASSERT(!IS_TAINTED(&j, sizeof(uint)));
+
+    for (i = 0; i < sizeof(buf); i++)
     {
         printf("Checking byte %d: ", i);
         TEST_ASSERT(!IS_TAINTED(&buf[i], sizeof(char)));
-        printf("\r");
     }
     printf("\n");
 

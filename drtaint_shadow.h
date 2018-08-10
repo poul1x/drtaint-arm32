@@ -68,6 +68,8 @@ drtaint_shadow_update_cpsr(void *drcontext, uint new_flags);
 uint
 drtaint_shadow_get_cpsr(void *drcontext);
 
+void 
+drtaint_shadow_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag);
 
 #ifdef __cplusplus
 }
