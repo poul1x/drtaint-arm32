@@ -69,11 +69,13 @@ Test gTests[] = {
 
     {"mov_reg", test_asm_mov_reg},
     {"mov_imm", test_asm_mov_imm},
-    {"mov_ex", test_asm_mov_ex},
+    {"mov_reg_ex", test_asm_mov_ex},
 
     {"arith3_reg", test_asm_arith3_reg},
     {"arith3_imm", test_asm_arith3_imm},
-
+    {"arith3_reg_ex", test_asm_arith3_reg_ex},
+    {"arith_1rd_3rs", test_asm_arith_1rd_3rs},
+    {"arith_2rd_2rs", test_asm_arith_2rd_2rs},
 };
 
 const int gTests_sz = sizeof(gTests) / sizeof(gTests[0]);
@@ -175,6 +177,7 @@ void show_all_tests()
         printf("  %-3d %s\n", i + 1, gTests[i].name);
 }
 
+// change clear
 void my_zero_memory(void *dst, int size)
 {
     char *p = (char *)dst;
@@ -203,22 +206,22 @@ bool test_simple()
     TEST_ASSERT(!IS_TAINTED(&c2, sizeof(char)));
     TEST_ASSERT(!IS_TAINTED(&c3, sizeof(char)));
     TEST_ASSERT(!IS_TAINTED(&c4, sizeof(char)));
-    
-    int i1,i2;
+
+    int i1, i2;
     MAKE_TAINTED(&i1, sizeof(int));
     TEST_ASSERT(IS_TAINTED(&i1, sizeof(int)));
     TEST_ASSERT(IS_TAINTED(&i1, sizeof(short)));
     TEST_ASSERT(!IS_TAINTED(&i2, sizeof(int)));
-    
+
     char buf[] = "abcd";
     MAKE_TAINTED(&buf[0], sizeof(char));
     MAKE_TAINTED(&buf[2], sizeof(char));
-    
+
     TEST_ASSERT(IS_TAINTED(&buf[0], sizeof(char)));
     TEST_ASSERT(!IS_TAINTED(&buf[1], sizeof(char)));
     TEST_ASSERT(IS_TAINTED(&buf[2], sizeof(char)));
     TEST_ASSERT(!IS_TAINTED(&buf[3], sizeof(char)));
-    
+
     TEST_END;
 }
 
@@ -1869,7 +1872,7 @@ bool test_asm_stm_ex_w()
                  : "=m"(dst)            \
                  : "m"(src)             \
                  : "r0", "r1");         \
-    printf("dst = %d\n", dst)
+    printf("dst = %08X\n", dst)
 
 #define CHECK_MOV_REG(com, src, dst) \
     INL_MOV_REG(com, src, dst);      \
@@ -1881,7 +1884,7 @@ bool test_asm_stm_ex_w()
                  : "=r"(dst)              \
                  :                        \
                  : "r1");                 \
-    printf("dst = %d\n", dst)
+    printf("dst = %08X\n", dst)
 
 #define CHECK_MOV_IMM(com, dst)      \
     MAKE_TAINTED(&dst, sizeof(int)); \
@@ -1891,22 +1894,21 @@ bool test_asm_stm_ex_w()
 bool test_asm_mov_reg()
 {
     TEST_START;
-    int src = 1024, dst = 0;
+    int src = 0x12345678, dst = 0;
     MAKE_TAINTED(&src, sizeof(int));
 
-    CHECK_MOV_REG(mov, src, dst);
-    CHECK_MOV_REG(mov, src, dst);
-    CHECK_MOV_REG(mvn, src, dst);
-    CHECK_MOV_REG(mvns, src, dst);
-    CHECK_MOV_REG(movs, src, dst);
     CHECK_MOV_REG(rrx, src, dst);
     CHECK_MOV_REG(rrxs, src, dst);
     CHECK_MOV_REG(uxtb, src, dst);
     CHECK_MOV_REG(uxth, src, dst);
     CHECK_MOV_REG(sxtb, src, dst);
+    CHECK_MOV_REG(sxtb16, src, dst);
     CHECK_MOV_REG(sxth, src, dst);
+    CHECK_MOV_REG(uxtb16, src, dst);
     CHECK_MOV_REG(rev, src, dst);
     CHECK_MOV_REG(rev16, src, dst);
+    CHECK_MOV_REG(revsh, src, dst);
+    CHECK_MOV_REG(rbit, src, dst);
     CHECK_MOV_REG(clz, src, dst);
 
     TEST_END;
@@ -1917,7 +1919,6 @@ bool test_asm_mov_imm()
     TEST_START;
     int dst = 0;
     CHECK_MOV_IMM(mov, dst);
-    CHECK_MOV_IMM(mov, dst);
     CHECK_MOV_IMM(mvn, dst);
     CHECK_MOV_IMM(mvns, dst);
     CHECK_MOV_IMM(movw, dst);
@@ -1927,15 +1928,15 @@ bool test_asm_mov_imm()
     TEST_END;
 }
 
-#define INL_MOV_REG_EX(com, src, dst)           \
-    printf("Test '" #com " r1, r2, #0, #4'\n"); \
-    asm volatile("ldr r1, %1;"                  \
-                 "" #com " r0, r1, #16, #2;"    \
-                 "str r0, %0;"                  \
-                 : "=m"(dst)                    \
-                 : "m"(src)                     \
-                 : "r0", "r1");                 \
-    printf("dst = %d\n", dst)
+#define INL_MOV_REG_EX(com, src, dst)            \
+    printf("Test '" #com " r1, r2, #0, #32'\n"); \
+    asm volatile("ldr r1, %1;"                   \
+                 "" #com " r0, r1, #0, #32;"     \
+                 "str r0, %0;"                   \
+                 : "=m"(dst)                     \
+                 : "m"(src)                      \
+                 : "r0", "r1");                  \
+    printf("dst = %08X\n", dst)
 
 #define CHECK_MOV_REG_EX(com, src, dst) \
     INL_MOV_REG_EX(com, src, dst);      \
@@ -1945,11 +1946,12 @@ bool test_asm_mov_ex()
 {
     TEST_START;
 
-    int src = -1, dst = 0;
+    int src = 0x12345678, dst = 0;
     MAKE_TAINTED(&src, sizeof(src));
 
     CHECK_MOV_REG_EX(sbfx, src, dst);
     CHECK_MOV_REG_EX(ubfx, src, dst);
+    CHECK_MOV_REG_EX(bfi, src, dst);
 
     TEST_END;
 }
@@ -1967,98 +1969,62 @@ bool test_asm_mov_ex()
                  : "=m"(dst)                  \
                  : "m"(src1), "m"(src2)       \
                  : "r0", "r1", "r2");         \
-    printf("dst = %d\n", dst)
+    printf("dst = %08X\n", dst)
 
 #define CHECK_ARITH_3_REG(com, dst, src1, src2) \
+    printf("\n--- src1 is tainted ---\n\n");    \
+    MAKE_TAINTED(&src1, sizeof(int));           \
     INL_ARITH_3_REG(com, dst, src1, src2);      \
-    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int)))
+    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int))); \
+    CLEAR(&src1, sizeof(int));                  \
+    printf("\n--- src2 is tainted ---\n\n");    \
+    MAKE_TAINTED(&src2, sizeof(int));           \
+    INL_ARITH_3_REG(com, dst, src1, src2);      \
+    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int))); \
+    CLEAR(&src2, sizeof(int))
 
+// !!!
 bool test_asm_arith3_reg()
 {
     TEST_START;
-    int v0 = 0, v1 = 1, v2 = 1;
-    MAKE_TAINTED(&v1, sizeof(int));
+    int v0 = 0, v1 = 0x12345678, v2 = 1;
 
-    CHECK_ARITH_3_REG(mul, v0, v1, v2);
+    CHECK_ARITH_3_REG(adc, v0, v1, v2);
+    CHECK_ARITH_3_REG(adcs, v0, v1, v2);
+    CHECK_ARITH_3_REG(add, v0, v1, v2);
+    CHECK_ARITH_3_REG(adds, v0, v1, v2);
+    CHECK_ARITH_3_REG(rsb, v0, v1, v2);
+    CHECK_ARITH_3_REG(rsbs, v0, v1, v2);
 #ifndef MTHUMB
-    CHECK_ARITH_3_REG(muls, v0, v1, v2);
+    CHECK_ARITH_3_REG(rsc, v0, v1, v2);
+    CHECK_ARITH_3_REG(rscs, v0, v1, v2);
 #endif
-    CHECK_ARITH_3_REG(uadd8, v0, v1, v2);
-    CHECK_ARITH_3_REG(uqsub8, v0, v1, v2);
-    CHECK_ARITH_3_REG(adc, v0, v2, v2);
-    CHECK_ARITH_3_REG(adcs, v0, v2, v2);
-    CHECK_ARITH_3_REG(add, v0, v2, v2);
-    CHECK_ARITH_3_REG(adds, v0, v2, v2);
-    //CHECK_ARITH_3_REG(addw, v0, v2, v2);
-    CHECK_ARITH_3_REG(rsb, v0, v2, v2);
-    CHECK_ARITH_3_REG(rsbs, v0, v2, v2);
+    CHECK_ARITH_3_REG(sbc, v0, v1, v2);
+    CHECK_ARITH_3_REG(sbcs, v0, v1, v2);
+    CHECK_ARITH_3_REG(sub, v0, v1, v2);
+    CHECK_ARITH_3_REG(subs, v0, v1, v2);
+    CHECK_ARITH_3_REG(and, v0, v1, v2);
+    CHECK_ARITH_3_REG(ands, v0, v1, v2);
 #ifndef MTHUMB
-    CHECK_ARITH_3_REG(rsc, v0, v2, v2);
+    CHECK_ARITH_3_REG(bic, v0, v1, v2);
 #endif
-    CHECK_ARITH_3_REG(sbc, v0, v2, v2);
-    CHECK_ARITH_3_REG(sbcs, v0, v2, v2);
-    CHECK_ARITH_3_REG(sub, v0, v2, v2);
-    //CHECK_ARITH_3_REG(subw, v0, v2, v2);
-    CHECK_ARITH_3_REG(subs, v0, v2, v2);
-    CHECK_ARITH_3_REG(and, v0, v2, v2);
-    CHECK_ARITH_3_REG(ands, v0, v2, v2);
-    CHECK_ARITH_3_REG(bic, v0, v2, v2);
-    CHECK_ARITH_3_REG(bics, v0, v2, v2);
-    CHECK_ARITH_3_REG(eor, v0, v2, v2);
-    CHECK_ARITH_3_REG(eors, v0, v2, v2);
-    CHECK_ARITH_3_REG(orr, v0, v2, v2);
-    CHECK_ARITH_3_REG(ror, v0, v2, v2);
-    CHECK_ARITH_3_REG(orrs, v0, v2, v2);
-    CHECK_ARITH_3_REG(lsl, v0, v2, v2);
-    CHECK_ARITH_3_REG(lsls, v0, v2, v2);
-    CHECK_ARITH_3_REG(lsr, v0, v2, v2);
-    CHECK_ARITH_3_REG(lsrs, v0, v2, v2);
-    CHECK_ARITH_3_REG(asr, v0, v2, v2);
-    CHECK_ARITH_3_REG(asrs, v0, v2, v2);
-    //CHECK_ARITH_3_REG(orn, v0, v2, v2);
-
-    //--------------------------
-
-    CLEAR(&v1, sizeof(int));
-    MAKE_TAINTED(&v2, sizeof(int));
-
-    CHECK_ARITH_3_REG(mul, v0, v1, v2);
-#ifndef MTHUMB
-    CHECK_ARITH_3_REG(muls, v0, v1, v2);
+    CHECK_ARITH_3_REG(bics, v0, v1, v2);
+    CHECK_ARITH_3_REG(eor, v0, v1, v2);
+    CHECK_ARITH_3_REG(eors, v0, v1, v2);
+    CHECK_ARITH_3_REG(orr, v0, v1, v2);
+    CHECK_ARITH_3_REG(orrs, v0, v1, v2);
+    CHECK_ARITH_3_REG(ror, v0, v1, v2);
+    CHECK_ARITH_3_REG(rors, v0, v1, v2);
+    CHECK_ARITH_3_REG(lsl, v0, v1, v2);
+    CHECK_ARITH_3_REG(lsls, v0, v1, v2);
+    CHECK_ARITH_3_REG(lsr, v0, v1, v2);
+    CHECK_ARITH_3_REG(lsrs, v0, v1, v2);
+    CHECK_ARITH_3_REG(asr, v0, v1, v2);
+    CHECK_ARITH_3_REG(asrs, v0, v1, v2);
+#ifdef MTHUMB
+    CHECK_ARITH_3_REG(orn, v0, v1, v2);
+    CHECK_ARITH_3_REG(orns, v0, v1, v2);
 #endif
-    CHECK_ARITH_3_REG(uadd8, v0, v1, v2);
-    CHECK_ARITH_3_REG(uqsub8, v0, v1, v2);
-    CHECK_ARITH_3_REG(adc, v0, v2, v2);
-    CHECK_ARITH_3_REG(adcs, v0, v2, v2);
-    CHECK_ARITH_3_REG(add, v0, v2, v2);
-    CHECK_ARITH_3_REG(adds, v0, v2, v2);
-    //CHECK_ARITH_3_REG(addw, v0, v2, v2);
-    CHECK_ARITH_3_REG(rsb, v0, v2, v2);
-    CHECK_ARITH_3_REG(rsbs, v0, v2, v2);
-#ifndef MTHUMB
-    CHECK_ARITH_3_REG(rsc, v0, v2, v2);
-#endif
-    CHECK_ARITH_3_REG(sbc, v0, v2, v2);
-    CHECK_ARITH_3_REG(sbcs, v0, v2, v2);
-    CHECK_ARITH_3_REG(sub, v0, v2, v2);
-    //CHECK_ARITH_3_REG(subw, v0, v2, v2);
-    CHECK_ARITH_3_REG(subs, v0, v2, v2);
-    CHECK_ARITH_3_REG(and, v0, v2, v2);
-    CHECK_ARITH_3_REG(ands, v0, v2, v2);
-    CHECK_ARITH_3_REG(bic, v0, v2, v2);
-    CHECK_ARITH_3_REG(bics, v0, v2, v2);
-    CHECK_ARITH_3_REG(eor, v0, v2, v2);
-    CHECK_ARITH_3_REG(eors, v0, v2, v2);
-    CHECK_ARITH_3_REG(orr, v0, v2, v2);
-    CHECK_ARITH_3_REG(ror, v0, v2, v2);
-    CHECK_ARITH_3_REG(orrs, v0, v2, v2);
-    CHECK_ARITH_3_REG(lsl, v0, v2, v2);
-    CHECK_ARITH_3_REG(lsls, v0, v2, v2);
-    CHECK_ARITH_3_REG(lsr, v0, v2, v2);
-    CHECK_ARITH_3_REG(lsrs, v0, v2, v2);
-    CHECK_ARITH_3_REG(asr, v0, v2, v2);
-    CHECK_ARITH_3_REG(asrs, v0, v2, v2);
-    //CHECK_ARITH_3_REG(orn, v0, v2, v2);
 
     TEST_END;
 }
@@ -2071,7 +2037,7 @@ bool test_asm_arith3_reg()
                  : "=m"(dst)                \
                  : "m"(src1)                \
                  : "r0", "r1");             \
-    printf("dst = %d\n", dst)
+    printf("dst = %08X\n", dst)
 
 #define CHECK_ARITH_3_IMM2(com, dst, src1) \
     INL_ARITH_3_IMM2(com, dst, src1);      \
@@ -2080,23 +2046,31 @@ bool test_asm_arith3_reg()
 bool test_asm_arith3_imm()
 {
     TEST_START;
-    int v0 = 0, v1 = 1;
-
+    int v0 = 0, v1 = 0x12345678;
     MAKE_TAINTED(&v1, sizeof(int));
+
     CHECK_ARITH_3_IMM2(adc, v0, v1);
     CHECK_ARITH_3_IMM2(adcs, v0, v1);
     CHECK_ARITH_3_IMM2(add, v0, v1);
     CHECK_ARITH_3_IMM2(adds, v0, v1);
-    //CHECK_ARITH_3_IMM2(addw, v0, v1);
+#ifdef MTHUMB
+    CHECK_ARITH_3_IMM2(addw, v0, v1);
+    CHECK_ARITH_3_IMM2(bic, v0, v1);
+    CHECK_ARITH_3_IMM2(subw, v0, v1);
+    CHECK_ARITH_3_IMM2(addw, v0, v1);
+#endif
     CHECK_ARITH_3_IMM2(rsb, v0, v1);
     CHECK_ARITH_3_IMM2(rsbs, v0, v1);
 #ifndef MTHUMB
     CHECK_ARITH_3_IMM2(rsc, v0, v1);
+    CHECK_ARITH_3_IMM2(rscs, v0, v1);
 #endif
     CHECK_ARITH_3_IMM2(sbc, v0, v1);
     CHECK_ARITH_3_IMM2(sbcs, v0, v1);
     CHECK_ARITH_3_IMM2(sub, v0, v1);
-    //CHECK_ARITH_3_IMM2(subw, v0, v1);
+#ifdef MTHUMB
+    CHECK_ARITH_3_IMM2(subw, v0, v1);
+#endif
     CHECK_ARITH_3_IMM2(subs, v0, v1);
     CHECK_ARITH_3_IMM2(and, v0, v1);
     CHECK_ARITH_3_IMM2(ands, v0, v1);
@@ -2105,17 +2079,235 @@ bool test_asm_arith3_imm()
     CHECK_ARITH_3_IMM2(eor, v0, v1);
     CHECK_ARITH_3_IMM2(eors, v0, v1);
     CHECK_ARITH_3_IMM2(orr, v0, v1);
-    CHECK_ARITH_3_IMM2(ror, v0, v1);
     CHECK_ARITH_3_IMM2(orrs, v0, v1);
+    CHECK_ARITH_3_IMM2(ror, v0, v1);
+    CHECK_ARITH_3_IMM2(rors, v0, v1);
     CHECK_ARITH_3_IMM2(lsl, v0, v1);
     CHECK_ARITH_3_IMM2(lsls, v0, v1);
     CHECK_ARITH_3_IMM2(lsr, v0, v1);
     CHECK_ARITH_3_IMM2(lsrs, v0, v1);
     CHECK_ARITH_3_IMM2(asr, v0, v1);
     CHECK_ARITH_3_IMM2(asrs, v0, v1);
-    //CHECK_ARITH_3_IMM2(orn, v0, v1);
+#ifdef MTHUMB
+    CHECK_ARITH_3_IMM2(orn, v0, v1);
+    CHECK_ARITH_3_IMM2(orns, v0, v1);
+#endif
+
+    TEST_END;
+}
+
+bool test_asm_arith3_reg_ex()
+{
+    TEST_START;
+    int v0 = 0, v1 = 0x12345678, v2 = 1;
+
+    CHECK_ARITH_3_REG(mul, v0, v1, v2);
+#ifndef MTHUMB
+    CHECK_ARITH_3_REG(muls, v0, v1, v2);
+#endif
+    CHECK_ARITH_3_REG(shsub16, v0, v1, v2);
+    CHECK_ARITH_3_REG(shsub8, v0, v1, v2);
+    // not supported    CHECK_ARITH_3_REG(sdiv, v0, v1, v2);
+    CHECK_ARITH_3_REG(sadd16, v0, v1, v2);
+    CHECK_ARITH_3_REG(sadd8, v0, v1, v2);
+    CHECK_ARITH_3_REG(sasx, v0, v1, v2);
+    CHECK_ARITH_3_REG(ssax, v0, v1, v2);
+    CHECK_ARITH_3_REG(ssub16, v0, v1, v2);
+    CHECK_ARITH_3_REG(ssub8, v0, v1, v2);
+    CHECK_ARITH_3_REG(sxtab, v0, v1, v2);
+    CHECK_ARITH_3_REG(sxtab16, v0, v1, v2);
+    CHECK_ARITH_3_REG(sxtah, v0, v1, v2);
+    CHECK_ARITH_3_REG(qadd, v0, v1, v2);
+    CHECK_ARITH_3_REG(qadd16, v0, v1, v2);
+    CHECK_ARITH_3_REG(qadd8, v0, v1, v2);
+    CHECK_ARITH_3_REG(qasx, v0, v1, v2);
+    CHECK_ARITH_3_REG(qdadd, v0, v1, v2);
+    CHECK_ARITH_3_REG(qdsub, v0, v1, v2);
+    CHECK_ARITH_3_REG(qsax, v0, v1, v2);
+    CHECK_ARITH_3_REG(qsub, v0, v1, v2);
+    CHECK_ARITH_3_REG(qsub16, v0, v1, v2);
+    CHECK_ARITH_3_REG(qsub8, v0, v1, v2);
+    // not supported  CHECK_ARITH_3_REG(udiv, v0, v1, v2);
+    CHECK_ARITH_3_REG(uadd8, v0, v1, v2);
+    CHECK_ARITH_3_REG(uadd16, v0, v1, v2);
+    CHECK_ARITH_3_REG(usax, v0, v1, v2);
+    CHECK_ARITH_3_REG(usub16, v0, v1, v2);
+    CHECK_ARITH_3_REG(usub8, v0, v1, v2);
+    CHECK_ARITH_3_REG(uasx, v0, v1, v2);
+    CHECK_ARITH_3_REG(uqadd16, v0, v1, v2);
+    CHECK_ARITH_3_REG(uqadd8, v0, v1, v2);
+    CHECK_ARITH_3_REG(uqasx, v0, v1, v2);
+    CHECK_ARITH_3_REG(uqsax, v0, v1, v2);
+    CHECK_ARITH_3_REG(uqsub16, v0, v1, v2);
+    CHECK_ARITH_3_REG(usad8, v0, v1, v2);
+    CHECK_ARITH_3_REG(uhadd16, v0, v1, v2);
+    CHECK_ARITH_3_REG(uhadd8, v0, v1, v2);
+    CHECK_ARITH_3_REG(uhasx, v0, v1, v2);
+    CHECK_ARITH_3_REG(uhsax, v0, v1, v2);
+    CHECK_ARITH_3_REG(uhsub16, v0, v1, v2);
+    CHECK_ARITH_3_REG(uhsub8, v0, v1, v2);
+    CHECK_ARITH_3_REG(smmul, v0, v1, v2);
+    CHECK_ARITH_3_REG(smmulr, v0, v1, v2);
+    CHECK_ARITH_3_REG(smuad, v0, v1, v2);
+    CHECK_ARITH_3_REG(smuadx, v0, v1, v2);
+    CHECK_ARITH_3_REG(smulbb, v0, v1, v2);
+    CHECK_ARITH_3_REG(smulbt, v0, v1, v2);
+    CHECK_ARITH_3_REG(smultb, v0, v1, v2);
+    CHECK_ARITH_3_REG(smultt, v0, v1, v2);
+    CHECK_ARITH_3_REG(smulwb, v0, v1, v2);
+    CHECK_ARITH_3_REG(smulwt, v0, v1, v2);
+    CHECK_ARITH_3_REG(smusd, v0, v1, v2);
+    CHECK_ARITH_3_REG(smusdx, v0, v1, v2);
+    CHECK_ARITH_3_REG(uxtab, v0, v1, v2);
+    CHECK_ARITH_3_REG(uxtab16, v0, v1, v2);
+    CHECK_ARITH_3_REG(uxtah, v0, v1, v2);
 
     TEST_END;
 }
 
 #pragma endregion asm_arith_3args
+
+#pragma region asm_arith_1rd_3rs
+
+#define INL_ARITH_1RD_3RS(com, dst, src1, src2, src3) \
+    printf("Test '" #com " r0, r1, r2, r3'\n");       \
+    asm volatile("ldr r1, %1;"                        \
+                 "ldr r2, %2;"                        \
+                 "ldr r3, %3;"                        \
+                 "" #com " r0, r1, r2, r3;"           \
+                 "str r0, %0;"                        \
+                 : "=m"(dst)                          \
+                 : "m"(src1), "m"(src2), "m"(src3)    \
+                 : "r0", "r1", "r2", "r3")
+
+#define CHECK_ARITH_1RD_3RS_N(com, dst, src1, src2, src3, n) \
+    printf("Parameter src%d is tainted\n", n);               \
+    MAKE_TAINTED(&src##n, sizeof(int));                      \
+    INL_ARITH_1RD_3RS(com, dst, src1, src2, src3);           \
+    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int)));              \
+    CLEAR(&src##n, sizeof(int))
+
+#define CHECK_ARITH_1RD_3RS(com, dst, src1, src2, src3)   \
+    CHECK_ARITH_1RD_3RS_N(com, dst, src1, src2, src3, 1); \
+    CHECK_ARITH_1RD_3RS_N(com, dst, src1, src2, src3, 2); \
+    CHECK_ARITH_1RD_3RS_N(com, dst, src1, src2, src3, 3)
+
+bool test_asm_arith_1rd_3rs()
+{
+    TEST_START;
+    int dst = 0, src1 = 0, src2 = 0, src3 = 0;
+
+    CHECK_ARITH_1RD_3RS(mla, dst, src1, src2, src3);
+#ifndef MTHUMB
+    CHECK_ARITH_1RD_3RS(mlas, dst, src1, src2, src3);
+#endif
+    CHECK_ARITH_1RD_3RS(mls, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smlabb, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smlabt, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smlatb, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smlatt, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smlad, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smladx, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smlawb, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smlawt, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smlsd, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smlsdx, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smmla, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smmlar, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smmls, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(smmlsr, dst, src1, src2, src3);
+    CHECK_ARITH_1RD_3RS(usada8, dst, src1, src2, src3);
+
+    TEST_END;
+}
+
+#pragma endregion asm_arith_1rd_3rs
+
+#pragma region asm_arith_2rd_2rs
+
+#define INL_ARITH_2RD_2RS(com, dst1, dst2, src1, src2) \
+    printf("Test '" #com " r0, r1, r2, r3'\n");        \
+    asm volatile("ldr r2, %2;"                         \
+                 "ldr r3, %3;"                         \
+                 "ldr r1, %1;"                         \
+                 "ldr r0, %0;"                         \
+                 "" #com " r0, r1, r2, r3;"            \
+                 "str r0, %0;"                         \
+                 "str r1, %1;"                         \
+                 : "=m"(dst1), "=m"(dst2)              \
+                 : "m"(src1), "m"(src2)                \
+                 : "r0", "r1", "r2", "r3")
+
+#define CHECK_ARITH_2RD_2RS_N(com, dst1, dst2, src1, src2, n) \
+    printf("Parameter src%d is tainted\n", n);                \
+    MAKE_TAINTED(&src##n, sizeof(int));                       \
+    INL_ARITH_2RD_2RS(com, dst1, dst2, src1, src2);           \
+    TEST_ASSERT(IS_TAINTED(&dst1, sizeof(int)));              \
+    TEST_ASSERT(IS_TAINTED(&dst2, sizeof(int)));              \
+    src##n = 0
+
+#define CHECK_ARITH_2RD_2RS(com, dst1, dst2, src1, src2)   \
+    CHECK_ARITH_2RD_2RS_N(com, dst1, dst2, src1, src2, 1); \
+    CHECK_ARITH_2RD_2RS_N(com, dst1, dst2, src1, src2, 2)
+
+#define CHECK_ARITH_2RD_2RS_EX_N(com, dst1, dst2, src1, src2, n) \
+    printf("Parameter dst%d is tainted\n", n);                   \
+    MAKE_TAINTED(&dst##n, sizeof(int));                          \
+    INL_ARITH_2RD_2RS(com, dst1, dst2, src1, src2);              \
+    TEST_ASSERT(IS_TAINTED(&dst1, sizeof(int)));                 \
+    TEST_ASSERT(IS_TAINTED(&dst2, sizeof(int)));                 \
+    dst##n = 0
+
+#define CHECK_ARITH_2RD_2RS_EX(com, dst1, dst2, src1, src2)   \
+    CHECK_ARITH_2RD_2RS_EX_N(com, dst1, dst2, src1, src2, 1); \
+    CHECK_ARITH_2RD_2RS_EX_N(com, dst1, dst2, src1, src2, 2)
+
+bool test_asm_arith_2rd_2rs()
+{
+    TEST_START;
+    int dst1 = 0, dst2 = 0, src1 = 0, src2 = 0;
+
+    CHECK_ARITH_2RD_2RS(smull, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(umull, dst1, dst2, src1, src2);
+#ifndef MTHUMB
+    CHECK_ARITH_2RD_2RS(smulls, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(umulls, dst1, dst2, src1, src2);
+#endif
+
+    CHECK_ARITH_2RD_2RS(smlal, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(smlalbb, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(smlalbt, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(smlald, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(smlaldx, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(smlaltb, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(smlaltt, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(smlsld, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(smlsldx, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(umaal, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(umlal, dst1, dst2, src1, src2);
+#ifndef MTHUMB
+    CHECK_ARITH_2RD_2RS(umlals, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS(smlals, dst1, dst2, src1, src2);
+#endif
+
+    CHECK_ARITH_2RD_2RS_EX(smlal, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(smlal, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(smlalbb, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(smlalbt, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(smlald, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(smlaldx, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(smlaltb, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(smlaltt, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(smlsld, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(smlsldx, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(umaal, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(umlal, dst1, dst2, src1, src2);
+#ifndef MTHUMB
+    CHECK_ARITH_2RD_2RS_EX(smlals, dst1, dst2, src1, src2);
+    CHECK_ARITH_2RD_2RS_EX(umlals, dst1, dst2, src1, src2);
+#endif
+
+    TEST_END;
+}
+
+#pragma endregion asm_arith_2rd_2rs

@@ -90,3 +90,6 @@ bool test_asm_mov_ex();
 
 bool test_asm_arith3_reg();
 bool test_asm_arith3_imm();
+bool test_asm_arith3_reg_ex();
+bool test_asm_arith_1rd_3rs();
+bool test_asm_arith_2rd_2rs();

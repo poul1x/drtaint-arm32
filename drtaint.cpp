@@ -523,7 +523,7 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
             instrlist_meta_preinsert(ilist, where,
                                      XINST_CREATE_move(drcontext,
                                                        opnd_create_reg(nullreg),
-                                                       OPND_CREATE_INT8(0)));
+                                                       OPND_CREATE_INT32(0)));
 
             // get shadow register address of %rd% and place it to %srd%
             drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
@@ -606,7 +606,7 @@ propagate_arith_reg_imm(void *drcontext, void *tag, instrlist_t *ilist, instr_t 
 /*
     [add | sub | ... ] reg2, reg1, imm
 
-    Need to mark reg2 tainted
+    Need to mark reg2 tainted by tag of reg1
 */
 {
     auto sreg2 = drreg_reservation{ilist, where};
@@ -621,13 +621,14 @@ propagate_arith_reg_imm(void *drcontext, void *tag, instrlist_t *ilist, instr_t 
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
 
     // write the result to shadow register of reg2
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte  // str sreg1, [sreg2]
-                             (drcontext, OPND_CREATE_MEM8(sreg2, 0), // dst_mem: sreg2
-                              opnd_create_reg(sreg1)));              // src_reg: sreg1
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_store(drcontext, // str sreg1, [sreg2]
+                                                OPND_CREATE_MEM32(sreg2, 0),
+                                                opnd_create_reg(sreg1)));
 }
 
 static void
-propagate_mla(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
+propagate_1rd_3rs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /* 
     mla reg4, reg3, reg2, reg1 
 
@@ -636,7 +637,6 @@ propagate_mla(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     we use OR to combine their impacts to reg4
 */
 {
-
     auto sreg1 = drreg_reservation{ilist, where};
     auto sreg2 = drreg_reservation{ilist, where};
     reg_id_t sreg3 = sreg2;
@@ -651,32 +651,33 @@ propagate_mla(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg2);
 
-    instrlist_meta_preinsert(ilist, where, INSTR_CREATE_orr // sreg1 = sreg1 || sreg2
-                             (drcontext,
-                              opnd_create_reg(sreg1),   // dst:  sreg1
-                              opnd_create_reg(sreg2),   // src1: sreg2
-                              opnd_create_reg(sreg1))); // src2: sreg1
+    instrlist_meta_preinsert(ilist, where,
+                             INSTR_CREATE_orr(drcontext, // sreg1 |= sreg2
+                                              opnd_create_reg(sreg1),
+                                              opnd_create_reg(sreg2),
+                                              opnd_create_reg(sreg1)));
 
     // get value of shadow register of reg3 and place it to %sreg3%
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg3, sreg3);
 
-    instrlist_meta_preinsert(ilist, where, INSTR_CREATE_orr // sreg1 = sreg3 || sreg1
-                             (drcontext,
-                              opnd_create_reg(sreg1),   // dst:  sreg1
-                              opnd_create_reg(sreg3),   // src1: sreg3
-                              opnd_create_reg(sreg1))); // src2: sreg1
+    instrlist_meta_preinsert(ilist, where,
+                             INSTR_CREATE_orr(drcontext, // sreg1 |= sreg3
+                                              opnd_create_reg(sreg1),
+                                              opnd_create_reg(sreg3),
+                                              opnd_create_reg(sreg1)));
 
     // get address of shadow register of reg4 and place it to %sreg4%
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg4, sreg4);
 
     // save the result to shadow register of reg4
-    instrlist_meta_preinsert_xl8(ilist, where, XINST_CREATE_store_1byte  // str sreg1, [sreg4]
-                                 (drcontext, OPND_CREATE_MEM8(sreg4, 0), // dst_mem: sreg4
-                                  opnd_create_reg(sreg1)));              // src_reg: sreg1
+    instrlist_meta_preinsert_xl8(ilist, where,
+                                 XINST_CREATE_store(drcontext, // str sreg1, [sreg4]
+                                                    OPND_CREATE_MEM32(sreg4, 0),
+                                                    opnd_create_reg(sreg1)));
 }
 
 static void
-propagate_umull(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
+propagate_mull(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /* 
     umull reg4, reg3, reg2, reg1 
 
@@ -687,8 +688,8 @@ propagate_umull(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 {
     auto sreg1 = drreg_reservation{ilist, where};
     auto sreg2 = drreg_reservation{ilist, where};
-    auto sreg3 = drreg_reservation{ilist, where};
-    reg_id_t sreg4 = sreg3; /* we reuse a register for this */
+    reg_id_t sreg3 = sreg2; /* we reuse a register for this */
+    reg_id_t sreg4 = sreg3; 
 
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
     reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 1));
@@ -699,25 +700,101 @@ propagate_umull(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg2);
 
-    instrlist_meta_preinsert(ilist, where, INSTR_CREATE_orr // sreg1 = sreg2 || sreg1
-                             (drcontext,
-                              opnd_create_reg(sreg1),   // dst:  sreg1
-                              opnd_create_reg(sreg2),   // src1: sreg2
-                              opnd_create_reg(sreg1))); // src2: sreg1
+    instrlist_meta_preinsert(ilist, where,
+                             INSTR_CREATE_orr(drcontext, // sreg1 |= sreg2
+                                              opnd_create_reg(sreg1),
+                                              opnd_create_reg(sreg2),
+                                              opnd_create_reg(sreg1)));
 
     // get address of shadow register of reg3 and place it to %sreg3%
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg3, sreg3);
 
     // save the higher part of result to shadow register of reg3
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte // str sreg1, [sreg3]
-                             (drcontext, OPND_CREATE_MEM8(sreg3, 0), opnd_create_reg(sreg1)));
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_store(drcontext, // str sreg1, [sreg3]
+                                                OPND_CREATE_MEM32(sreg3, 0),
+                                                opnd_create_reg(sreg1)));
 
     // get address of shadow register of reg4 and place it to %sreg4%
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg4, sreg4);
 
     // save the the lower part of result to shadow register of reg4
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte // str sreg1, [sreg4]
-                             (drcontext, OPND_CREATE_MEM8(sreg4, 0), opnd_create_reg(sreg1)));
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_store(drcontext, // str sreg1, [sreg4]
+                                                OPND_CREATE_MEM32(sreg4, 0),
+                                                opnd_create_reg(sreg1)));
+}
+
+static void
+propagate_smlal(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
+/* 
+    smlal rdlo, rdhi, reg1, reg2 
+
+    rdlo, rdhi - source and destination registers 
+
+    Need to mark rdlo and rdhi tainted. 
+    Because their values depend on values of reg2, reg1, rdlo, rdhi
+    we use OR to combine their impacts to rdlo and rdhi    
+*/
+{
+    auto sreg1 = drreg_reservation{ilist, where};
+    auto sreg2 = drreg_reservation{ilist, where};
+    reg_id_t srdlo = sreg2;
+    reg_id_t srdhi = srdlo;
+
+    reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 3));
+    reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 4));
+    reg_id_t rdlo = opnd_get_reg(instr_get_dst(where, 1));
+    reg_id_t rdhi = opnd_get_reg(instr_get_dst(where, 0));
+
+    // get value of shadow registers of reg1, reg2 and place it to %sreg1%, %sreg2%
+    drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
+    drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg2);
+
+    // combine tags of reg1, reg2
+    instrlist_meta_preinsert(ilist, where,
+                             INSTR_CREATE_orr(drcontext, // sreg1 |= sreg2
+                                              opnd_create_reg(sreg1),
+                                              opnd_create_reg(sreg2),
+                                              opnd_create_reg(sreg1)));
+
+    // get value of shadow register of rdlo and place it to %srdlo%
+    drtaint_insert_reg_to_taint_load(drcontext, ilist, where, rdlo, srdlo);
+
+    // combine tags of reg1, reg2, rdlo
+    instrlist_meta_preinsert(ilist, where,
+                             INSTR_CREATE_orr(drcontext, // sreg1 |= srdlo
+                                              opnd_create_reg(sreg1),
+                                              opnd_create_reg(srdlo),
+                                              opnd_create_reg(sreg1)));
+
+    // get value of shadow register of rdhi and place it to %srdhi%
+    drtaint_insert_reg_to_taint_load(drcontext, ilist, where, rdhi, srdhi);
+
+    // combine tags of reg1, reg2, rdlo, rdhi
+    instrlist_meta_preinsert(ilist, where,
+                             INSTR_CREATE_orr(drcontext, // sreg1 |= srdhi
+                                              opnd_create_reg(sreg1),
+                                              opnd_create_reg(srdhi),
+                                              opnd_create_reg(sreg1)));
+
+    // get address of shadow register of rdlo and place it to %sreg2%
+    drtaint_insert_reg_to_taint(drcontext, ilist, where, rdlo, srdlo);
+
+    // save the the lower part of result to shadow register of rdlo
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_store(drcontext, // str sreg1, [srdlo]
+                                                OPND_CREATE_MEM32(srdlo, 0),
+                                                opnd_create_reg(sreg1)));
+
+    // get address of shadow register of rdhi and place it to %sreg2%
+    drtaint_insert_reg_to_taint(drcontext, ilist, where, rdhi, srdhi);
+
+    // save the the higher part of result to shadow register of rdhi
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_store(drcontext, // str sreg1, [srdhi]
+                                                OPND_CREATE_MEM32(srdhi, 0),
+                                                opnd_create_reg(sreg1)));
 }
 
 static void
@@ -733,6 +810,7 @@ propagate_arith_reg_reg(void *drcontext, void *tag, instrlist_t *ilist, instr_t 
     auto sreg2 = drreg_reservation{ilist, where};
     auto sreg1 = drreg_reservation{ilist, where};
     reg_id_t sreg3 = sreg2; /* we reuse a register for this */
+    
     reg_id_t reg3 = opnd_get_reg(instr_get_dst(where, 0));
     reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 0));
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 1));
@@ -741,12 +819,19 @@ propagate_arith_reg_reg(void *drcontext, void *tag, instrlist_t *ilist, instr_t 
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg2);
 
-    instrlist_meta_preinsert(ilist, where, INSTR_CREATE_orr // sreg1 |= sreg2
-                             (drcontext, opnd_create_reg(sreg1), opnd_create_reg(sreg2), opnd_create_reg(sreg1)));
+    instrlist_meta_preinsert(ilist, where,
+                             INSTR_CREATE_orr(drcontext, // sreg1 |= sreg2
+                                              opnd_create_reg(sreg1),
+                                              opnd_create_reg(sreg2),
+                                              opnd_create_reg(sreg1)));
 
+    // get shadow address of reg3 and place it to %sreg3%
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg3, sreg3);
-    instrlist_meta_preinsert(ilist, where, XINST_CREATE_store_1byte // str sreg1, [sreg3]
-                             (drcontext, OPND_CREATE_MEM8(sreg3, 0), opnd_create_reg(sreg1)));
+
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_store(drcontext, // str sreg1, [sreg3]
+                                                OPND_CREATE_MEM32(sreg3, 0),
+                                                opnd_create_reg(sreg1)));
 }
 
 // decrement before, increment after, decrement after, increment before
@@ -778,7 +863,7 @@ calculate_addr<IA>(instr_t *instr, void *base, int i, int top)
 {
     return (app_pc)base + 4 * i;
 }
-//////////////////////////
+
 template <>
 app_pc
 calculate_addr<DA>(instr_t *instr, void *base, int i, int top)
@@ -1122,6 +1207,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
             propagate_mov_reg_src(drcontext, tag, ilist, where);
         else
             propagate_mov_imm_src(drcontext, tag, ilist, where);
+
         break;
 
     case OP_rrx:
@@ -1131,15 +1217,22 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_uxtb:
     case OP_uxth:
     case OP_sxtb:
+    case OP_sxtb16:
     case OP_sxth:
+    case OP_uxtb16:
     case OP_rev:
     case OP_rev16:
+    case OP_revsh:
+    case OP_rbit:
+    case OP_bfi:
     case OP_clz:
 
         /* These aren't mov's per se, but they only accept 1
          * reg source and 1 reg dest.
          */
-        propagate_mov_reg_src(drcontext, tag, ilist, where);
+        if (instr_num_dsts(where) > 0) // some instructions contain optional Rd
+            propagate_mov_reg_src(drcontext, tag, ilist, where);
+
         break;
 
     // op rd, r1, op2
@@ -1151,6 +1244,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_rsb:
     case OP_rsbs:
     case OP_rsc:
+    case OP_rscs:
     case OP_sbc:
     case OP_sbcs:
     case OP_sub:
@@ -1163,8 +1257,9 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_eor:
     case OP_eors:
     case OP_orr:
-    case OP_ror:
     case OP_orrs:
+    case OP_ror:
+    case OP_rors:
     case OP_lsl:
     case OP_lsls:
     case OP_lsr:
@@ -1172,6 +1267,7 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_asr:
     case OP_asrs:
     case OP_orn:
+    case OP_orns:
 
         if (opnd_is_reg(instr_get_src(where, 0)))
         {
@@ -1182,52 +1278,177 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         }
         else
             DR_ASSERT(false);
+
         break;
 
     // op rd, r1, r2
     case OP_mul:
     case OP_muls:
+
+    case OP_shsub16:
+    case OP_shsub8:
+    case OP_sdiv:
+    case OP_sadd16:
+    case OP_sadd8:
+    case OP_sasx:
+    case OP_ssax:
+    case OP_ssub16:
+    case OP_ssub8:
+    case OP_sxtab:
+    case OP_sxtab16:
+    case OP_sxtah:
+
+    case OP_qadd:
+    case OP_qadd16:
+    case OP_qadd8:
+    case OP_qasx:
+    case OP_qdadd:
+    case OP_qdsub:
+    case OP_qsax:
+    case OP_qsub:
+    case OP_qsub16:
+    case OP_qsub8:
+
+    case OP_udiv:
     case OP_uadd8:
-    case OP_uqsub8:
+    case OP_uadd16:
+    case OP_usax:
+    case OP_usub16:
+    case OP_usub8:
+    case OP_uasx:
+    case OP_uqadd16:
+    case OP_uqadd8:
+    case OP_uqasx:
+    case OP_uqsax:
+    case OP_uqsub16:
+    case OP_usad8:
 
-        DR_ASSERT(opnd_is_reg(instr_get_src(where, 0)) &&
-                  opnd_is_reg(instr_get_src(where, 1)) &&
-                  opnd_is_reg(instr_get_dst(where, 0)));
+    case OP_uhadd16:
+    case OP_uhadd8:
+    case OP_uhasx:
+    case OP_uhsax:
+    case OP_uhsub16:
+    case OP_uhsub8:
 
-        propagate_arith_reg_reg(drcontext, tag, ilist, where);
+    case OP_smmul:
+    case OP_smmulr:
+    case OP_smuad:
+    case OP_smuadx:
+    case OP_smulbb:
+    case OP_smulbt:
+    case OP_smultb:
+    case OP_smultt:
+    case OP_smulwb:
+    case OP_smulwt:
+    case OP_smusd:
+    case OP_smusdx:
+
+    case OP_uxtab:
+    case OP_uxtab16:
+    case OP_uxtah:
+
+        if (instr_num_dsts(where) > 0) // some instructions contain optional Rd
+            propagate_arith_reg_reg(drcontext, tag, ilist, where);
+
         break;
 
+    // op rd1, rd2, r1, r2
     case OP_smull:
+    case OP_smulls:
     case OP_umull:
-        propagate_umull(drcontext, tag, ilist, where);
+    case OP_umulls:
+
+        propagate_mull(drcontext, tag, ilist, where);
         break;
 
-    case OP_mla:
-    case OP_mls:
-        propagate_mla(drcontext, tag, ilist, where);
+    // op rdlo, rdhi, r1, r2
+    case OP_smlal:
+    case OP_smlalbb:
+    case OP_smlalbt:
+    case OP_smlald:
+    case OP_smlaldx:
+    case OP_smlals:
+    case OP_smlaltb:
+    case OP_smlaltt:
+    case OP_smlsld:
+    case OP_smlsldx:
+    case OP_umaal:
+    case OP_umlal:
+    case OP_umlals:
+
+        propagate_smlal(drcontext, tag, ilist, where);
         break;
+
+    // op rd, r1, r2, r3
+    case OP_mla:
+    case OP_mlas:
+    case OP_mls:
+
+    case OP_smlabb:
+    case OP_smlabt:
+    case OP_smlatb:
+    case OP_smlatt:
+    case OP_smlad:
+    case OP_smladx:
+    case OP_smlawb:
+    case OP_smlawt:
+    case OP_smlsd:
+    case OP_smlsdx:
+    case OP_smmla:
+    case OP_smmlar:
+    case OP_smmls:
+    case OP_smmlsr:
+    case OP_usada8:
+
+        propagate_1rd_3rs(drcontext, tag, ilist, where);
+        break;
+
+    // ===================================
+    case OP_pkhbt:
+    case OP_pkhtb:
+        break;
+
+    case OP_swp:
+    case OP_swpb:
+        break;
+
+    case OP_usat:
+    case OP_usat16:
+    case OP_ssat:
+    case OP_ssat16:
+
+        break;
+        // ===================================
 
     case OP_bl:
     case OP_blx:
     case OP_blx_ind:
+
+        // lr = next_instr(pc)
+        // then taint lr
         propagate_mov_regs(drcontext, tag, ilist, where,
-                           DR_REG_PC, DR_REG_LR);
-        /* fallthrough, we could have a register dest */
+                           DR_REG_LR, DR_REG_PC);
+
+        // fallthrough, we could have a register dest
+
     case OP_bxj:
     case OP_bx:
     case OP_b:
     case OP_b_short:
-        /* could have register destination */
+
+        // could have register destination
         if (opnd_is_reg(instr_get_src(where, 0)))
         {
             propagate_mov_regs(drcontext, tag, ilist, where,
                                opnd_get_reg(instr_get_src(where, 0)),
                                DR_REG_PC);
         }
-        /* we don't have to do anything for immediates */
+
+        // we don't have to do anything for immediates
         break;
 
     default:
+
         unimplemented_opcode(where);
         break;
     }
