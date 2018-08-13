@@ -20,9 +20,10 @@
 #define DRTAINT_FAILURE 0xBB
 
 #define IS_TAINTED(mem) (mem != 0)
-#define TAINT_TAG 0x45
+#define TAINT_TAG 0x80
 
 #define FD_APP_START_TRACE 0xFFFFEEEE
+#define FD_APP_STOP_TRACE 0xFFFFEEED
 #define FD_APP_IS_TRACED 0xFFFFEEEF
 
 static void
@@ -39,6 +40,9 @@ set_syscall_retval(void *drcontext, bool ok);
 
 static bool
 handle_start_trace(void *drcontext);
+
+static bool
+handle_stop_trace(void *drcontext);
 
 static bool
 handle_check_trace(void *drcontext);
@@ -104,6 +108,8 @@ event_pre_syscall(void *drcontext, int sysnum)
             return handle_start_trace(drcontext);
         else if (fd == FD_APP_IS_TRACED)
             return handle_check_trace(drcontext);
+        else if (fd == FD_APP_STOP_TRACE)
+            return handle_stop_trace(drcontext);
         else
             return true;
     }
@@ -125,75 +131,28 @@ set_syscall_retval(void *drcontext, bool ok)
     dr_syscall_set_result_ex(drcontext, &info);
 }
 
-#ifdef VERBOSE
-
-static bool
-handle_start_trace(void *drcontext)
-{
-    // get arguments of read syscall
-    char *buffer = (char *)dr_syscall_get_param(drcontext, 1);
-    size_t len = dr_syscall_get_param(drcontext, 2);
-
-    dr_printf("Making tainted buffer: ");
-
-    // taint buffer
-    for (int i = 0; i < len; ++i)
-    {
-        if (!drtaint_set_app_taint(drcontext, (app_pc)&buffer[i], TAINT_TAG))
-        {
-            dr_printf("Unable to set app tainted");
-            set_syscall_retval(drcontext, false);
-            return false;
-        }
-
-        dr_printf("%c", buffer[i]);
-    }
-
-    dr_printf("\n\n");
-    set_syscall_retval(drcontext, true);
-    return false;
-}
-
-static bool
-handle_check_trace(void *drcontext)
-{
-    // get arguments of write syscall
-    char *buffer = (char *)dr_syscall_get_param(drcontext, 1);
-    size_t len = dr_syscall_get_param(drcontext, 2);
-    byte result;
-
-    dr_printf("Check buffer is tainted: ");
-
-    // check the buffer is tainted
-    for (int i = 0; i < len; ++i)
-    {
-        dr_printf("%c", buffer[i]);
-
-        if (!drtaint_get_app_taint(drcontext, (app_pc)&buffer[i], &result) ||
-            !IS_TAINTED(result))
-        {
-            set_syscall_retval(drcontext, false);
-            dr_printf("\n\n");
-            return false;
-        }
-    }
-
-    set_syscall_retval(drcontext, true);
-    dr_printf("\n\n");
-    return false;
-}
-
-#else
 
 static bool
 handle_start_trace(void *drcontext)
 {
     char *buffer = (char *)dr_syscall_get_param(drcontext, 1);
     uint len = dr_syscall_get_param(drcontext, 2);
-    bool ok;
 
     // taint buffer
     drtaint_set_app_area_taint(drcontext, (app_pc)buffer, len, TAINT_TAG);
+    set_syscall_retval(drcontext, true);
+    return false;
+}
+
+static bool
+handle_stop_trace(void *drcontext)
+{
+    char *buffer = (char *)dr_syscall_get_param(drcontext, 1);
+    uint len = dr_syscall_get_param(drcontext, 2);
+    bool ok;
+
+    // untaint buffer
+    drtaint_set_app_area_taint(drcontext, (app_pc)buffer, len, 0);
     set_syscall_retval(drcontext, true);
     return false;
 }
@@ -222,5 +181,3 @@ handle_check_trace(void *drcontext)
     set_syscall_retval(drcontext, true);
     return false;
 }
-
-#endif

@@ -29,6 +29,21 @@
     the data was tracked or not. CLEAR macro allows you to make data untainted
 */
 
+static Test *
+find_test(const char *name);
+
+static void
+run_all_tests();
+
+static void
+show_all_tests();
+
+static void
+usage();
+
+static void
+run_tests_with_prefix(char *prefix, size_t len);
+
 Test gTests[] = {
 
     {"simple", test_simple},
@@ -76,6 +91,8 @@ Test gTests[] = {
     {"arith3_reg_ex", test_asm_arith3_reg_ex},
     {"arith_1rd_3rs", test_asm_arith_1rd_3rs},
     {"arith_2rd_2rs", test_asm_arith_2rd_2rs},
+
+    {"pkhXX", test_asm_pkhXX},
 };
 
 const int gTests_sz = sizeof(gTests) / sizeof(gTests[0]);
@@ -97,6 +114,16 @@ int main(int argc, char *argv[])
     if (!strcmp(argv[1], "--show"))
     {
         show_all_tests();
+        return 0;
+    }
+
+    if (!strcmp(argv[1], "--prefix"))
+    {
+        if (argc == 3)
+            run_tests_with_prefix(argv[2], strlen(argv[2]));
+        else
+            usage();
+
         return 0;
     }
 
@@ -169,6 +196,33 @@ void run_all_tests()
            count_passed, count_failed);
 }
 
+void run_tests_with_prefix(char *prefix, size_t len)
+{
+    int count_failed = 0, count_passed = 0;
+    bool passed;
+    Test *ptest;
+
+    for (int i = 1; i < gTests_sz; i++)
+    {
+        ptest = &gTests[i];
+
+        if (!strncmp(ptest->name, prefix, len))
+        {
+
+            printf("\n\n--- Running test %s--- \n\n", ptest->name);
+            passed = ptest->run();
+
+            printf("Test %s is %s\n", ptest->name,
+                   passed ? "passed" : "failed");
+
+            passed ? count_passed++ : count_failed++;
+        }
+    }
+
+    printf("\nResults: passed - %d, failed - %d\nExitting...\n",
+           count_passed, count_failed);
+}
+
 void show_all_tests()
 {
     printf("Available tests:\n");
@@ -177,18 +231,11 @@ void show_all_tests()
         printf("  %-3d %s\n", i + 1, gTests[i].name);
 }
 
-// change clear
-void my_zero_memory(void *dst, int size)
-{
-    char *p = (char *)dst;
-    while (p - (char *)dst < size)
-        *p++ = 0;
-}
-
 void usage()
 {
     printf("Usage:\n");
     printf("Run tests: file.exe <test1> <test2> ...\n");
+    printf("Run tests with prefix: file.exe --prefix <prefix>\n");
     printf("Run all tests: file.exe --all\n");
     printf("Show all tests: file.exe --show\n");
 }
@@ -1977,11 +2024,13 @@ bool test_asm_mov_ex()
     INL_ARITH_3_REG(com, dst, src1, src2);      \
     TEST_ASSERT(IS_TAINTED(&dst, sizeof(int))); \
     CLEAR(&src1, sizeof(int));                  \
+    CLEAR(&dst, sizeof(int));                   \
     printf("\n--- src2 is tainted ---\n\n");    \
     MAKE_TAINTED(&src2, sizeof(int));           \
     INL_ARITH_3_REG(com, dst, src1, src2);      \
     TEST_ASSERT(IS_TAINTED(&dst, sizeof(int))); \
-    CLEAR(&src2, sizeof(int))
+    CLEAR(&src2, sizeof(int));                  \
+    CLEAR(&dst, sizeof(int))
 
 // !!!
 bool test_asm_arith3_reg()
@@ -2039,9 +2088,10 @@ bool test_asm_arith3_reg()
                  : "r0", "r1");             \
     printf("dst = %08X\n", dst)
 
-#define CHECK_ARITH_3_IMM2(com, dst, src1) \
-    INL_ARITH_3_IMM2(com, dst, src1);      \
-    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int)))
+#define CHECK_ARITH_3_IMM2(com, dst, src1)      \
+    INL_ARITH_3_IMM2(com, dst, src1);           \
+    TEST_ASSERT(IS_TAINTED(&dst, sizeof(int))); \
+    CLEAR(&dst, sizeof(int));
 
 bool test_asm_arith3_imm()
 {
@@ -2178,14 +2228,16 @@ bool test_asm_arith3_reg_ex()
                  "str r0, %0;"                        \
                  : "=m"(dst)                          \
                  : "m"(src1), "m"(src2), "m"(src3)    \
-                 : "r0", "r1", "r2", "r3")
+                 : "r0", "r1", "r2", "r3");           \
+    printf("dst = %08X\n", dst)
 
 #define CHECK_ARITH_1RD_3RS_N(com, dst, src1, src2, src3, n) \
     printf("Parameter src%d is tainted\n", n);               \
     MAKE_TAINTED(&src##n, sizeof(int));                      \
     INL_ARITH_1RD_3RS(com, dst, src1, src2, src3);           \
     TEST_ASSERT(IS_TAINTED(&dst, sizeof(int)));              \
-    CLEAR(&src##n, sizeof(int))
+    CLEAR(&src##n, sizeof(int));                             \
+    CLEAR(&dst, sizeof(int))
 
 #define CHECK_ARITH_1RD_3RS(com, dst, src1, src2, src3)   \
     CHECK_ARITH_1RD_3RS_N(com, dst, src1, src2, src3, 1); \
@@ -2195,7 +2247,7 @@ bool test_asm_arith3_reg_ex()
 bool test_asm_arith_1rd_3rs()
 {
     TEST_START;
-    int dst = 0, src1 = 0, src2 = 0, src3 = 0;
+    int dst = 0, src1 = 1, src2 = 0xFFFFFFFE, src3 = 1;
 
     CHECK_ARITH_1RD_3RS(mla, dst, src1, src2, src3);
 #ifndef MTHUMB
@@ -2236,36 +2288,41 @@ bool test_asm_arith_1rd_3rs()
                  "str r1, %1;"                         \
                  : "=m"(dst1), "=m"(dst2)              \
                  : "m"(src1), "m"(src2)                \
-                 : "r0", "r1", "r2", "r3")
+                 : "r0", "r1", "r2", "r3");            \
+    printf("dst1 = %08X, dst2 = %08X\n", dst1, dst2)
 
-#define CHECK_ARITH_2RD_2RS_N(com, dst1, dst2, src1, src2, n) \
-    printf("Parameter src%d is tainted\n", n);                \
-    MAKE_TAINTED(&src##n, sizeof(int));                       \
-    INL_ARITH_2RD_2RS(com, dst1, dst2, src1, src2);           \
-    TEST_ASSERT(IS_TAINTED(&dst1, sizeof(int)));              \
-    TEST_ASSERT(IS_TAINTED(&dst2, sizeof(int)));              \
-    src##n = 0
+#define CHECK_ARITH_2RD_2RS_N(com, dst1, dst2, src1, src2, n1, n2) \
+    printf("Parameter src%d is tainted\n", n1);                    \
+    CLEAR(&dst1, sizeof(int));                                     \
+    CLEAR(&dst2, sizeof(int));                                     \
+    CLEAR(&src##n2, sizeof(int));                                  \
+    MAKE_TAINTED(&src##n1, sizeof(int));                           \
+    INL_ARITH_2RD_2RS(com, dst1, dst2, src1, src2);                \
+    TEST_ASSERT(IS_TAINTED(&dst1, sizeof(int)));                   \
+    TEST_ASSERT(IS_TAINTED(&dst2, sizeof(int)));
 
-#define CHECK_ARITH_2RD_2RS(com, dst1, dst2, src1, src2)   \
-    CHECK_ARITH_2RD_2RS_N(com, dst1, dst2, src1, src2, 1); \
-    CHECK_ARITH_2RD_2RS_N(com, dst1, dst2, src1, src2, 2)
+#define CHECK_ARITH_2RD_2RS(com, dst1, dst2, src1, src2)      \
+    CHECK_ARITH_2RD_2RS_N(com, dst1, dst2, src1, src2, 1, 2); \
+    CHECK_ARITH_2RD_2RS_N(com, dst1, dst2, src1, src2, 2, 1)
 
-#define CHECK_ARITH_2RD_2RS_EX_N(com, dst1, dst2, src1, src2, n) \
-    printf("Parameter dst%d is tainted\n", n);                   \
-    MAKE_TAINTED(&dst##n, sizeof(int));                          \
-    INL_ARITH_2RD_2RS(com, dst1, dst2, src1, src2);              \
-    TEST_ASSERT(IS_TAINTED(&dst1, sizeof(int)));                 \
-    TEST_ASSERT(IS_TAINTED(&dst2, sizeof(int)));                 \
-    dst##n = 0
+#define CHECK_ARITH_2RD_2RS_EX_N(com, dst1, dst2, src1, src2, n1, n2) \
+    printf("Parameter dst%d is tainted\n", n1);                       \
+    CLEAR(&dst##n2, sizeof(int));                                     \
+    CLEAR(&src1, sizeof(int));                                        \
+    CLEAR(&src2, sizeof(int));                                        \
+    MAKE_TAINTED(&dst##n1, sizeof(int));                              \
+    INL_ARITH_2RD_2RS(com, dst1, dst2, src1, src2);                   \
+    TEST_ASSERT(IS_TAINTED(&dst##n1, sizeof(int)));                   \
+    TEST_ASSERT(!IS_TAINTED(&dst##n2, sizeof(int)))
 
-#define CHECK_ARITH_2RD_2RS_EX(com, dst1, dst2, src1, src2)   \
-    CHECK_ARITH_2RD_2RS_EX_N(com, dst1, dst2, src1, src2, 1); \
-    CHECK_ARITH_2RD_2RS_EX_N(com, dst1, dst2, src1, src2, 2)
+#define CHECK_ARITH_2RD_2RS_EX(com, dst1, dst2, src1, src2)      \
+    CHECK_ARITH_2RD_2RS_EX_N(com, dst1, dst2, src1, src2, 1, 2); \
+    CHECK_ARITH_2RD_2RS_EX_N(com, dst1, dst2, src1, src2, 2, 1)
 
 bool test_asm_arith_2rd_2rs()
 {
     TEST_START;
-    int dst1 = 0, dst2 = 0, src1 = 0, src2 = 0;
+    int dst1 = 0, dst2 = 0, src1 = 0x40000000, src2 = 0x40000000;
 
     CHECK_ARITH_2RD_2RS(smull, dst1, dst2, src1, src2);
     CHECK_ARITH_2RD_2RS(umull, dst1, dst2, src1, src2);
@@ -2291,7 +2348,6 @@ bool test_asm_arith_2rd_2rs()
 #endif
 
     CHECK_ARITH_2RD_2RS_EX(smlal, dst1, dst2, src1, src2);
-    CHECK_ARITH_2RD_2RS_EX(smlal, dst1, dst2, src1, src2);
     CHECK_ARITH_2RD_2RS_EX(smlalbb, dst1, dst2, src1, src2);
     CHECK_ARITH_2RD_2RS_EX(smlalbt, dst1, dst2, src1, src2);
     CHECK_ARITH_2RD_2RS_EX(smlald, dst1, dst2, src1, src2);
@@ -2311,3 +2367,56 @@ bool test_asm_arith_2rd_2rs()
 }
 
 #pragma endregion asm_arith_2rd_2rs
+
+#pragma region asm_pkhXX
+
+#define INL_PKHXX(com, dst, src1, src2)     \
+    printf("Test '" #com " r0, r1, r2'\n"); \
+    asm volatile("ldr r1, %1;"              \
+                 "ldr r2, %2;"              \
+                 "" #com " r0, r1, r2;"     \
+                 "str r0, %0;"              \
+                 : "=m"(dst)                \
+                 : "m"(src1), "m"(src2)     \
+                 : "r0", "r1", "r2");       \
+    printf("dst = %08X\n", dst)
+
+#define CHECK_PKHXX(com, dst, src1, src2, sz1, sz2, st1, st2, sz3) \
+    CLEAR(&dst, sizeof(int));                                      \
+    CLEAR(&src1, sizeof(int));                                     \
+    CLEAR(&src2, sizeof(int));                                     \
+    MAKE_TAINTED((char *)&src1 + st1, sz1);                        \
+    MAKE_TAINTED((char *)&src2 + st2, sz2);                        \
+    INL_PKHXX(com, dst, src1, src2);                               \
+    TEST_ASSERT(IS_TAINTED(&dst, sz3))
+
+#define CHECK_PKHXX_NOT(com, dst, src1, src2, sz1, sz2, st1, st2, sz3) \
+    CLEAR(&dst, sizeof(int));                                          \
+    CLEAR(&src1, sizeof(int));                                         \
+    CLEAR(&src2, sizeof(int));                                         \
+    MAKE_TAINTED((char *)&src1 + st1, sz1);                            \
+    MAKE_TAINTED((char *)&src2 + st2, sz2);                            \
+    INL_PKHXX(com, dst, src1, src2);                                   \
+    TEST_ASSERT(IS_NOT_TAINTED(&dst, sz3))
+
+bool test_asm_pkhXX()
+{
+    TEST_START;
+    int dst, src1 = 0xAAAABBBB, src2 = 0xCCCCDDDD;
+
+    CHECK_PKHXX(pkhbt, dst, src1, src2, 4, 4, 0, 0, 4);
+    CHECK_PKHXX(pkhtb, dst, src1, src2, 4, 4, 0, 0, 4);
+
+    CHECK_PKHXX(pkhbt, dst, src1, src2, 2, 2, 0, 2, 4);
+    CHECK_PKHXX(pkhtb, dst, src1, src2, 2, 2, 0, 2, 0);
+
+    CHECK_PKHXX(pkhtb, dst, src1, src2, 2, 2, 2, 0, 4);
+    CHECK_PKHXX(pkhbt, dst, src1, src2, 2, 2, 2, 0, 0);
+
+    CHECK_PKHXX_NOT(pkhbt, dst, src1, src2, 2, 2, 2, 0, 4);
+    CHECK_PKHXX_NOT(pkhtb, dst, src1, src2, 2, 2, 0, 2, 4);
+
+    TEST_END;
+}
+
+#pragma endregion asm_pkhXX

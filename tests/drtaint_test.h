@@ -3,6 +3,7 @@
 
 #define DRTAINT_SUCCESS 0xAA
 #define FD_APP_START_TRACE 0xFFFFEEEE
+#define FD_APP_STOP_TRACE 0xFFFFEEED
 #define FD_APP_IS_TRACED 0xFFFFEEEF
 
 #define IS_TAINTED(mem, mem_sz) \
@@ -14,8 +15,13 @@
 #define MAKE_TAINTED(mem, mem_sz) \
     assert(write(FD_APP_START_TRACE, mem, mem_sz) == DRTAINT_SUCCESS)
 
+#define CLEAR(mem, mem_sz) \
+    assert(write(FD_APP_STOP_TRACE, mem, mem_sz) == DRTAINT_SUCCESS)
+
 #define TEST_START bool _status_ = true
+
 #define TEST_END return _status_
+
 #define TEST_ASSERT(q)              \
     if (!(q))                       \
     {                               \
@@ -25,8 +31,6 @@
     else                            \
         printf("%s: ok\n", #q)
 
-#define CLEAR(mem, mem_sz) my_zero_memory(mem, mem_sz)
-
 typedef bool (*testfunc)(void);
 
 typedef struct _Test
@@ -35,16 +39,6 @@ typedef struct _Test
     testfunc run;
 
 } Test;
-
-Test *find_test(const char *name);
-
-void run_all_tests();
-
-void show_all_tests();
-
-void my_zero_memory(void *dst, int size);
-
-void usage();
 
 // test function prototypes
 bool test_simple();
@@ -93,3 +87,5 @@ bool test_asm_arith3_imm();
 bool test_asm_arith3_reg_ex();
 bool test_asm_arith_1rd_3rs();
 bool test_asm_arith_2rd_2rs();
+
+bool test_asm_pkhXX();
