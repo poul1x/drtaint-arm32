@@ -23,31 +23,17 @@ extern "C"
     void *drcontext_;
   };
 
-  class load_store_helper
-  {
-    // arm32 mode load and store instructions only
-
-  public:
-    load_store_helper(instr_t *where);
-    ~load_store_helper();
-
-    bool is_pre_addr();
-    bool is_post_addr();
-    bool is_pre_or_offs_addr();
-    bool is_offs_addr();
-    bool is_imm_offs();
-    bool is_reg_offs();
-
-  private:
-    uint raw_instr_bits;
-
-    // type1 - LDR|STR{<cond>}H|SH|SB|D <Rd>, <addressing_mode>
-    // type2 - LDR|STR{<cond>}{B}{T} <Rd>, <addressing_mode>
-    bool type1;
-  };
-
-  void 
-  load_store_info(instr_t * where);
+  bool 
+  is_pre_addr(uint raw_instr_bits);
+  
+  bool 
+  is_post_addr(uint raw_instr_bits);
+  
+  bool 
+  is_pre_or_offs_addr(uint raw_instr_bits);
+  
+  bool 
+  is_offs_addr(uint raw_instr_bits);
 
   void
   unimplemented_opcode(instr_t *where);

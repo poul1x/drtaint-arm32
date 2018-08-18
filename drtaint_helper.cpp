@@ -17,55 +17,26 @@ drreg_reservation::
     drreg_unreserve_register(drcontext_, ilist_, where_, reg_);
 }
 
-load_store_helper::
-    load_store_helper(instr_t *where)
-    : raw_instr_bits(instr_get_raw_word(where, 0))
+bool is_offs_addr(uint raw_instr_bits)
 {
-    type1 = TEST_BIT_DOWN(this->raw_instr_bits, 25) &&
-            TEST_BIT_DOWN(this->raw_instr_bits, 26);
+    return TEST_BIT_UP(raw_instr_bits, 24) &&
+           TEST_BIT_DOWN(raw_instr_bits, 21);
 }
 
-load_store_helper::
-    ~load_store_helper() = default;
-
-bool load_store_helper::
-    is_offs_addr()
+bool is_pre_addr(uint raw_instr_bits)
 {
-    return TEST_BIT_UP(this->raw_instr_bits, 24) &&
-           TEST_BIT_DOWN(this->raw_instr_bits, 21);
+    return TEST_BIT_UP(raw_instr_bits, 24) &&
+           TEST_BIT_UP(raw_instr_bits, 21);
 }
 
-bool load_store_helper::
-    is_pre_addr()
+bool is_pre_or_offs_addr(uint raw_instr_bits)
 {
-    return TEST_BIT_UP(this->raw_instr_bits, 24) &&
-           TEST_BIT_UP(this->raw_instr_bits, 21);
+    return TEST_BIT_UP(raw_instr_bits, 24);
 }
 
-bool load_store_helper::
-    is_pre_or_offs_addr()
+bool is_post_addr(uint raw_instr_bits)
 {
-    return TEST_BIT_UP(this->raw_instr_bits, 24);
-}
-
-bool load_store_helper::
-    is_post_addr()
-{
-    return TEST_BIT_DOWN(this->raw_instr_bits, 24);
-}
-
-bool load_store_helper::
-    is_imm_offs()
-{
-    return type1 ? TEST_BIT_UP(this->raw_instr_bits, 22)
-                 : TEST_BIT_DOWN(this->raw_instr_bits, 25);
-}
-
-bool load_store_helper::
-    is_reg_offs()
-{
-    return type1 ? TEST_BIT_DOWN(this->raw_instr_bits, 22)
-                 : TEST_BIT_UP(this->raw_instr_bits, 25);
+    return TEST_BIT_DOWN(raw_instr_bits, 24);
 }
 
 void unimplemented_opcode(instr_t *where)
@@ -133,34 +104,5 @@ void what_are_dsts(instr_t *where)
         }
 
         dr_printf("\n");
-    }
-}
-
-void load_store_info(instr_t *where)
-{
-
-    load_store_helper lsh(where);
-    if (lsh.is_imm_offs())
-    {
-        dr_printf("Imm offs\n");
-
-        if (lsh.is_offs_addr())
-            dr_printf("Offs addr\n");
-        else if (lsh.is_pre_addr())
-            dr_printf("Pre addr\n");
-        else if (lsh.is_post_addr())
-            dr_printf("Post addr\n");
-    }
-
-    else if (lsh.is_reg_offs())
-    {
-        dr_printf("Reg offs\n");
-
-        if (lsh.is_offs_addr())
-            dr_printf("Offs addr\n");
-        else if (lsh.is_pre_addr())
-            dr_printf("Pre addr\n");
-        else if (lsh.is_post_addr())
-            dr_printf("Post addr\n");
     }
 }

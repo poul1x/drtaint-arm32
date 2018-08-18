@@ -7,10 +7,17 @@
     to place all their handling routines to another file
 */
 
-bool 
-instr_is_simd(instr_t *where)
+bool propagate_simd_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
+                        int opcode, void *user_data)
 {
-    switch (instr_get_opcode(where)) {
+    unimplemented_opcode(where);
+    return false;
+}
+
+bool instr_is_simd(instr_t *where)
+{
+    switch (instr_get_opcode(where))
+    {
     case OP_vaba_s16:
     case OP_vaba_s32:
     case OP_vaba_s8:
