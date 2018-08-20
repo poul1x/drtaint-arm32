@@ -18,9 +18,18 @@ set(CMAKE_CXX_STANDARD 11)
 #  drtaint_shadow.c
 #  drtaint_helper.cpp)
 
-add_library(drtaint_test SHARED
+#   add_library(drtaint_test SHARED
+#   
+#   app/drtaint_test.cpp
+#   drtaint.cpp
+#   drtaint_simd.cpp
+#   drtaint_shadow.c
+#   drtaint_helper.cpp)
 
-app/drtaint_test.cpp
+
+add_library(drtaint_demo SHARED
+
+app/drtaint_demo.cpp
 drtaint.cpp
 drtaint_simd.cpp
 drtaint_shadow.c
@@ -31,13 +40,22 @@ find_package(DynamoRIO REQUIRED)
 find_package(DrMemoryFramework REQUIRED)
 
 
-configure_DynamoRIO_client(drtaint_test)
-use_DynamoRIO_extension(drtaint_test "drreg")
-use_DynamoRIO_extension(drtaint_test "drmgr")
-use_DynamoRIO_extension(drtaint_test "drutil")
-use_DynamoRIO_extension(drtaint_test "drx")
-use_DynamoRIO_extension(drtaint_test "umbra")
-use_DynamoRIO_extension(drtaint_test "drsyscall")
+configure_DynamoRIO_client(drtaint_demo)
+use_DynamoRIO_extension(drtaint_demo "drreg")
+use_DynamoRIO_extension(drtaint_demo "drmgr")
+use_DynamoRIO_extension(drtaint_demo "drutil")
+use_DynamoRIO_extension(drtaint_demo "drx")
+use_DynamoRIO_extension(drtaint_demo "umbra")
+use_DynamoRIO_extension(drtaint_demo "drsyscall")
+
+
+#   configure_DynamoRIO_client(drtaint_test)
+#   use_DynamoRIO_extension(drtaint_test "drreg")
+#   use_DynamoRIO_extension(drtaint_test "drmgr")
+#   use_DynamoRIO_extension(drtaint_test "drutil")
+#   use_DynamoRIO_extension(drtaint_test "drx")
+#   use_DynamoRIO_extension(drtaint_test "umbra")
+#   use_DynamoRIO_extension(drtaint_test "drsyscall")
 
 #	configure_DynamoRIO_client(draslrharden)
 #	use_DynamoRIO_extension(draslrharden "drreg")

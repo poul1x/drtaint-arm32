@@ -695,82 +695,8 @@ void ds_opnds_reg_id_to_info(void *drcontext, reg_id_t reg)
     data->reg_list |= (1 << reg);
 }
 
-int x = 0;
-bool b = true;
 
-void my_func(void *drcontext, const instr_opnds_t *taint_info)
-{
-    instr_t *instr = instr_create(drcontext);
-    decode(drcontext, taint_info->pc, instr);
-    int opcode = instr_get_opcode(instr);
-
-    if (!(opcode == OP_stm))
-    {
-        return;
-    }
-
-    if (x++ == 100)
-    {
-        b = false;
-        return;
-    }
-
-    if (b == false)
-        return;
-
-    instr_disassemble(drcontext, instr, STDOUT);
-    dr_printf("\nwhat = %08X\n", taint_info->what);
-    dr_printf("start = %08X\n", taint_info->app_start);
-    dr_printf("delta = %08X\n", taint_info->app_delta);
-    dr_printf("iters = %08X\n", taint_info->app_iters);
-    dr_printf("reglist = %08X\n", taint_info->reg_list);
-    dr_printf("pc = %08X\n", taint_info->pc);
-    instr_destroy(drcontext, instr);
-
-    // dr_printf("%s\n", taint_info->disasm_instr);
-
-    /*if (taint_info->what == SUPPOSE_TAINTED_REG)
-    {
-        uint res;
-        bool ok;
-        char buf[50];
-
-        for (int r = 0; r < sizeof(uint) * 8; r++)
-        {
-            if (taint_info->regs & (1 << r))
-            {
-                ok = drtaint_get_reg_taint(drcontext, r, &res);
-                DR_ASSERT(ok);
-
-                dr_snprintf(buf, sizeof(buf), "{tag = 0x%08X}\t", res);
-                dr_print_opnd(drcontext, STDOUT, opnd_create_reg(r), buf);
-            }
-        }
-    }
-
-    else
-    {
-        bool ok;
-        uint m;
-        byte i, res;
-
-        DR_ASSERT(taint_info->app_start != 0 &&
-                  taint_info->app_iters != 0 &&
-                  taint_info->app_delta != 0);
-
-        for (m = taint_info->app_start, i = 0;
-             i < taint_info->app_iters;
-             m += taint_info->app_delta, i++)
-        {
-            ok = drtaint_get_app_taint(drcontext, (app_pc)m, &res);
-            DR_ASSERT(ok);
-
-            dr_printf("m0x%08X{tag = 0x%02X}\t", m, res);
-        }
-    }*/
-}
-
-drtaint_track_t g_taint_callback = my_func;
+drtaint_track_t g_taint_callback = NULL;
 
 void drtaint_register_post_taint_event(drtaint_track_t func)
 {
@@ -784,16 +710,17 @@ void g_taint_pre_callback(drtaint_track_t func, app_pc pc)
     byte *ptr = (byte *)data + offsetof(per_thread_t, what);
     data->pc = pc;
 
-    if (func)
-        func(drcontext, (const instr_opnds_t *)(ptr));
+    DR_ASSERT(func != NULL);
+    func(drcontext, (const instr_opnds_t *)(ptr));
 }
 
 void ds_opnds_insert_callback(void *drcontext, instrlist_t *ilist, instr_t *where)
 {
-    dr_insert_clean_call(drcontext, ilist, where,
-                         g_taint_pre_callback, false, 2, 
-                         OPND_CREATE_INTPTR(g_taint_callback),
-                         OPND_CREATE_INTPTR(instr_get_app_pc(where)));
+    if (g_taint_callback)
+        dr_insert_clean_call(drcontext, ilist, where,
+                             g_taint_pre_callback, false, 2,
+                             OPND_CREATE_INTPTR(g_taint_callback),
+                             OPND_CREATE_INTPTR(instr_get_app_pc(where)));
 }
 
 #endif

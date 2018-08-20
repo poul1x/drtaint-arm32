@@ -1035,41 +1035,6 @@ app_pc calculate_addr<IB>(instr_t *instr, void *base, int i, int top)
     return (app_pc)base + 4 * (i + 1);
 }
 
-#ifdef ASM_TAINT
-
-template <stack_dir_t T>
-byte get_delta()
-{
-    DR_ASSERT_MSG(false, "Unreachable");
-    return 0;
-}
-
-template <>
-byte get_delta<DB>()
-{
-    return -4;
-}
-
-template <>
-byte get_delta<IA>()
-{
-    return 4;
-}
-
-template <>
-byte get_delta<DA>()
-{
-    return -4;
-}
-
-template <>
-byte get_delta<IB>()
-{
-    return 4;
-}
-
-#endif
-
 template <stack_dir_t c>
 void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
 /*
@@ -1088,11 +1053,11 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
         num_dsts--;
 
 #ifdef ASM_TAINT
+    int opcode = instr_get_opcode(instr);
+    int j = opcode == OP_ldmia || opcode == OP_ldmib ? 0 : num_dsts - 1;
+
     ds_opnds_tainted_to_info(drcontext, SUPPOSE_TAINTED_REG);
-    ds_opnds_app_area_to_info(drcontext,
-                              calculate_addr<c>(instr, base, 0, num_dsts),
-                              get_delta<c>(),
-                              num_dsts);
+    ds_opnds_app_area_to_info(drcontext, calculate_addr<c>(instr, base, j, num_dsts), 4, num_dsts);
 #endif
 
     for (int i = 0; i < num_dsts; ++i)
@@ -1139,11 +1104,11 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
         num_srcs--;
 
 #ifdef ASM_TAINT
+    int opcode = instr_get_opcode(instr);
+    int j = opcode == OP_stmia || opcode == OP_stmib ? 0 : num_srcs - 1;
+
     ds_opnds_tainted_to_info(drcontext, SUPPOSE_TAINTED_APP);
-    ds_opnds_app_area_to_info(drcontext,
-                              calculate_addr<c>(instr, base, 0, num_srcs),
-                              get_delta<c>(),
-                              num_srcs);
+    ds_opnds_app_area_to_info(drcontext, calculate_addr<c>(instr, base, j, num_srcs), 4, num_srcs);
 #endif
 
     for (int i = 0; i < num_srcs; ++i)
