@@ -98,7 +98,6 @@ event_thread_init(void *drcontext)
     memset(data, 0, sizeof(per_thread_t));
 
     char fname[64];
-    // for each thread write file
     dr_snprintf(fname, sizeof(fname), "drtaint_demo_tid_%d.txt", tid);
 
     data->tid = tid;
@@ -124,7 +123,6 @@ event_filter_syscall(void *drcontext, int sysnum)
 static void
 event_post_syscall(void *drcontext, int sysnum)
 {
-    // if SYS_read is successfull then taint
     if (sysnum == SYS_read)
     {
         dr_syscall_result_info_t info = {
@@ -222,7 +220,6 @@ handle_app(void *drcontext, char *p, const instr_opnds_t *taint_info, bool *rb)
     return p;
 }
 
-// our callback
 static void
 event_post_taint(void *drcontext, const instr_opnds_t *taint_info)
 {
@@ -238,13 +235,13 @@ event_post_taint(void *drcontext, const instr_opnds_t *taint_info)
     else
         p = handle_app(drcontext, p, taint_info, &rb);
 
+    // write to file only if reg or app is tainted
     if (rb)
     {
         per_thread_t *data = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
         instr_t *instr = instr_create(drcontext);
         decode(drcontext, taint_info->pc, instr);
 
-        // write to file
         p += dr_snprintf(p, 20, "\n0x%08X  ", taint_info->pc);
         p += instr_disassemble_to_buffer(drcontext, instr, p, 256);
         p += dr_snprintf(p, 2, "\n\n");

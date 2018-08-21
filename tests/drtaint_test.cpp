@@ -709,13 +709,12 @@ bool test_asm_ldr_imm()
 /*
     Checks 
     
-    ldrXX r0, [r]
+    ldrXX r0, [r1]
     ldrXX r0, [r1, #imm]
     ldrXX r0, [r1, #imm]!
     ldrXX r0, [r1], #imm
 
-    where r1 is tainted
-    
+    where r1 is tainted 
 */
 {
     TEST_START;
@@ -776,7 +775,6 @@ bool test_asm_ldr_imm_ex()
     ldrXX r0, [r1, #imm]!
 
     where r1 is not tainted
-    
 */
 {
     TEST_START;
@@ -1261,18 +1259,6 @@ bool test_asm_ldm_w()
 
     TEST_END;
 }
-
-/*
-
-printf("r1 = %d, r2 = %d, r3 = %d, r4 = %d\n", \
-           v1, v2, v3, v4);                        \
-    printf("%d", IS_TAINTED(&v1, sizeof(int)));    \
-    printf("%d", !IS_TAINTED(&v2, sizeof(int)));   \
-    printf("%d", IS_TAINTED(&v3, sizeof(int)));    \
-    printf("%d", !IS_TAINTED(&v4, sizeof(int)));   \
-    printf("\n");                                  \
-
-*/
 
 #define CHECK_LDM_EX(com, v1, v2, v3, v4, addr)    \
                                                    \
@@ -2032,7 +2018,6 @@ bool test_asm_mov_ex()
     CLEAR(&src2, sizeof(int));                  \
     CLEAR(&dst, sizeof(int))
 
-// !!!
 bool test_asm_arith3_reg()
 {
     TEST_START;
@@ -2400,6 +2385,14 @@ bool test_asm_arith_2rd_2rs()
     TEST_ASSERT(IS_NOT_TAINTED(&dst, sz3))
 
 bool test_asm_pkhXX()
+/*
+    pkh [bt | tb] r0, r1, r2
+
+    r0's tag value depends on 0:15, 16:31 bits of r1, r2
+    
+    First, get tainted parts of each src and check the result is full tainted
+    Second, get not tainted parts of each src and check the result is full not tainted
+*/
 {
     TEST_START;
     int dst, src1 = 0xAAAABBBB, src2 = 0xCCCCDDDD;
