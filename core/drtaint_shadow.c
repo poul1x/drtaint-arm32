@@ -2,10 +2,11 @@
 #include <signal.h>
 #include <stddef.h> /* for offsetof */
 
+#include "include/drtaint.h"
+
 #include "dr_api.h"
 #include "drmgr.h"
 #include "umbra.h"
-#include "drtaint.h"
 #include "drreg.h"
 
 static int num_shadow_count;

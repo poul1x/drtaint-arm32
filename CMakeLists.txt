@@ -1,75 +1,24 @@
 cmake_minimum_required (VERSION 3.0)
 project (drtaint)
 
-set(DynamoRIO_DIR         /home/debian/drbuild/dynamorio-armhf/release/cmake/)
-set(DrMemoryFramework_DIR /home/debian/drbuild/drmemory-armhf/exports32/drmf/)
-set(CMAKE_CXX_STANDARD 11)
+# cmake ../ -DDynamoRIO_DIR=/home/user/Downloads/dynamorio/build/cmake/ -DDrMemoryFramework_DIR=/home/user/Downloads/drmemory/build/drmf/ -DCMAKE_TOOLCHAIN_FILE=toolchain-arm32.cmake
+# cmake ../ -DDynamoRIO_DIR=/home/debian/Downloads/dynamorio/build/cmake/ -DDrMemoryFramework_DIR=/home/debian/Downloads/drmemory/build/drmf/ -DDebug=ON
 
-#  add_library(draslrharden SHARED
-#
-#  app/draslrharden.cpp
-#  drtaint.cpp
-#  drtaint_shadow.c
-#  drtaint_helper.cpp)
+if (NOT DEFINED DynamoRIO_DIR)
+  message(FATAL_ERROR "Need to specify directory DynamoRIO_DIR containing DynamoRIOConfig.cmake")
+endif ()
 
-#  add_library(drtaint SHARED
-#  app/drtaint_only.cpp
-#  drtaint.cpp
-#  drtaint_shadow.c
-#  drtaint_helper.cpp)
-
-#   add_library(drtaint_test SHARED
-#   
-#   app/drtaint_test.cpp
-#   drtaint.cpp
-#   drtaint_simd.cpp
-#   drtaint_shadow.c
-#   drtaint_helper.cpp)
-
-
-add_library(drtaint_demo SHARED
-
-app/drtaint_demo.cpp
-drtaint.cpp
-drtaint_simd.cpp
-drtaint_shadow.c
-drtaint_helper.cpp)
+if (NOT DEFINED DrMemoryFramework_DIR)
+  message(FATAL_ERROR "Need to specify directory DrMemoryFramework_DIR containing DRMFTarget32.cmake")
+endif ()
 
 
 find_package(DynamoRIO REQUIRED)
 find_package(DrMemoryFramework REQUIRED)
 
+# build projects
+add_subdirectory(app/drtaint_test drtaint_test)
+add_subdirectory(app/drtaint_only drtaint_only)
+add_subdirectory(app/drtaint_demo drtaint_demo)
+add_subdirectory(app/draslrharden draslrharden)
 
-configure_DynamoRIO_client(drtaint_demo)
-use_DynamoRIO_extension(drtaint_demo "drreg")
-use_DynamoRIO_extension(drtaint_demo "drmgr")
-use_DynamoRIO_extension(drtaint_demo "drutil")
-use_DynamoRIO_extension(drtaint_demo "drx")
-use_DynamoRIO_extension(drtaint_demo "umbra")
-use_DynamoRIO_extension(drtaint_demo "drsyscall")
-
-
-#   configure_DynamoRIO_client(drtaint_test)
-#   use_DynamoRIO_extension(drtaint_test "drreg")
-#   use_DynamoRIO_extension(drtaint_test "drmgr")
-#   use_DynamoRIO_extension(drtaint_test "drutil")
-#   use_DynamoRIO_extension(drtaint_test "drx")
-#   use_DynamoRIO_extension(drtaint_test "umbra")
-#   use_DynamoRIO_extension(drtaint_test "drsyscall")
-
-#	configure_DynamoRIO_client(draslrharden)
-#	use_DynamoRIO_extension(draslrharden "drreg")
-#	use_DynamoRIO_extension(draslrharden "drmgr")
-#	use_DynamoRIO_extension(draslrharden "drutil")
-#	use_DynamoRIO_extension(draslrharden "drx")
-#	use_DynamoRIO_extension(draslrharden "droption")
-#	use_DynamoRIO_extension(draslrharden "umbra")
-#	use_DynamoRIO_extension(draslrharden "drsyscall")
-
-# 	configure_DynamoRIO_client(drtaint)
-# 	use_DynamoRIO_extension(drtaint "drreg")
-# 	use_DynamoRIO_extension(drtaint "drmgr")
-# 	use_DynamoRIO_extension(drtaint "drutil")
-# 	use_DynamoRIO_extension(drtaint "drx")
-# 	use_DynamoRIO_extension(drtaint "umbra")
-# 	use_DynamoRIO_extension(drtaint "drsyscall")

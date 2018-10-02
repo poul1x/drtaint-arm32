@@ -2,7 +2,7 @@
 #include "drmgr.h"
 #include "drreg.h"
 
-#include "../drtaint.h"
+#include "../../core/include/drtaint.h"
 #include <syscall.h>
 #include <string.h>
 

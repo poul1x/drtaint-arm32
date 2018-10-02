@@ -2,12 +2,12 @@
 #include "drmgr.h"
 #include "drreg.h"
 #include "drutil.h"
-
 #include "umbra.h"
 #include "drsyscall.h"
-#include "drtaint.h"
-#include "drtaint_shadow.h"
-#include "drtaint_helper.h"
+
+#include "include/drtaint.h"
+#include "include/drtaint_shadow.h"
+#include "include/drtaint_helper.h"
 
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
@@ -137,8 +137,7 @@ void drtaint_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag
  * main implementation, taint propagation step
  * ==================================================================================== */
 
-typedef enum
-{
+typedef enum {
     BYTE,
     HALF,
     WORD,
@@ -601,7 +600,7 @@ propagate_mov_regs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
 static void
 propagate_mov_reg_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 {
-    // mov reg2, reg1 
+    // mov reg2, reg1
     reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 0));
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
     propagate_mov_regs(drcontext, tag, ilist, where, reg1, reg2);
@@ -1019,8 +1018,7 @@ propagate_pkhXX(void *drcontext, void *tag, instrlist_t *ilist,
 }
 
 // decrement before, increment after, decrement after, increment before
-typedef enum
-{
+typedef enum {
     DB,
     IA,
     DA,
@@ -1031,6 +1029,7 @@ template <stack_dir_t T>
 app_pc calculate_addr(instr_t *instr, void *base, int i, int top)
 {
     DR_ASSERT_MSG(false, "Unreachable");
+    return 0;
 }
 
 template <>
@@ -1820,7 +1819,7 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         propagate_pkhXX(drcontext, tag, ilist, where, false);
         break;
 
-        // ===================================
+    // ===================================
 
     case OP_swp:
     case OP_swpb:
@@ -1832,7 +1831,7 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_ssat16:
 
         break;
-        // ===================================
+    // ===================================
 
     case OP_bl:
     case OP_blx:
@@ -1843,7 +1842,7 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         propagate_mov_regs(drcontext, tag, ilist, where,
                            DR_REG_LR, DR_REG_PC);
 
-        // fallthrough, we could have a register dest
+    // fallthrough, we could have a register dest
 
     case OP_bxj:
     case OP_bx:
