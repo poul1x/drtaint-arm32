@@ -4,12 +4,13 @@ project (drtaint_test)
 add_library(drtaint_test SHARED
 drtaint_test_cli.cpp
 ../../core/drtaint.cpp
+../../core/drtaint_simd.cpp
 ../../core/drtaint_shadow.c
 ../../core/drtaint_helper.cpp
 )
 
-set(CMAKE_C_FLAGS "-marm -Wall")
-set(CMAKE_CXX_FLAGS "-marm -Wall")
+set(CMAKE_C_FLAGS "-mthumb -Wall")
+set(CMAKE_CXX_FLAGS "-mthumb -Wall")
 
 if (Debug)
     message(STATUS "libdrtaint_test.so: configuring debug build")

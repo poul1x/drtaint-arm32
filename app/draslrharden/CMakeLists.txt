@@ -4,12 +4,13 @@ project (draslrharden)
 add_library(draslrharden SHARED
 draslrharden_cli.cpp
 ../../core/drtaint.cpp
+../../core/drtaint_simd.cpp
 ../../core/drtaint_shadow.c
 ../../core/drtaint_helper.cpp
 )
 
-set(CMAKE_C_FLAGS "-marm -Wall")
-set(CMAKE_CXX_FLAGS "-marm -Wall")
+set(CMAKE_C_FLAGS "-mthumb -Wall")
+set(CMAKE_CXX_FLAGS "-mthumb -Wall")
 
 if (Debug)
     message(STATUS "libdraslrharden.so: configuring debug build")

@@ -15,7 +15,6 @@ extern "C"
         DRMGR_PRIORITY_THREAD_EXIT_DRTAINT = 7500,
     };
 
-#define ASM_TAINT
 #define DRMGR_PRIORITY_NAME_DRTAINT "drtaint"
 #define DRMGR_PRIORITY_NAME_DRTAINT_EXIT "drtaint.exit"
 #define DRMGR_PRIORITY_NAME_DRTAINT_INIT "drtaint.init"

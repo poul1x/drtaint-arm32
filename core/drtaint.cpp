@@ -359,8 +359,9 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
 
 #ifdef ASM_TAINT
-        ds_opnds_insert_app_area_to_info(drcontext, ilist, where, sapp2, sizeof(int), 2);
-        ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
+        // causes segmentation fault because of multiple use of drreg_reserve_register
+        //ds_opnds_insert_app_area_to_info(drcontext, ilist, where, sapp2, sizeof(int), 2);
+        //ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
 #endif
 
         // get [mem2 + 4] address
@@ -503,8 +504,9 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
 
 #ifdef ASM_TAINT
-        ds_opnds_insert_app_area_to_info(drcontext, ilist, where, sapp2, sizeof(int), 2);
-        ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_APP);
+        // causes segmentation fault because of multiple use of drreg_reserve_register
+        //ds_opnds_insert_app_area_to_info(drcontext, ilist, where, sapp2, sizeof(int), 2);
+        //ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_APP);
 #endif
 
         // get next 4 bytes after [mem2]
@@ -513,25 +515,25 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                                        opnd_create_reg(sapp2n),
                                                        opnd_create_reg(sapp2),
                                                        OPND_CREATE_INT32(4)));
-
+        
         // get shadow memory address of [mem2] and place it to %sapp2%
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
-
+        
         // get value of shadow register of reg1 and place it to %sreg1%
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
-
+        
         // write the value of reg1 to [mem2] shadow address
         instrlist_meta_preinsert_xl8(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sreg1, [sapp2]
                                                         OPND_CREATE_MEM32(sapp2, 0),
                                                         opnd_create_reg(sreg1)));
-
+        
         // get shadow memory address of [mem2 + 4] and place it to %sapp2n%
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2n, sapp2);
-
+        
         // get value of shadow register of reg2 and place it to %sreg1%
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg1);
-
+        
         // write the shadow value of reg2 to [mem2 + 4] shadow address
         instrlist_meta_preinsert_xl8(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sreg1, [sapp2n]

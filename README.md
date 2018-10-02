@@ -1,60 +1,53 @@
 # Dr. Taint
 
-A *very* WIP DynamoRIO module built on the Dr. Memory Framework to implement taint
-analysis on ARM. Core functionality is still unfinished. Very raw, still has hardcoded
-paths to my hard drive in CMakeLists.txt, etc.
+This project is an attempt to improve the DrTaint: https://github.com/toshipiazza/drtaint. 
+It's still raw, with some bug fixes and new features added.
 
-# Limitations
+# Build
 
-Currently, taint propagation remains unimplemented for Neon and fpu instructions. glibc
-must be compiled without fp support. The following worked for me (cross compiled on x86):
+First, build DynamoRIO and DrMemory framework: https://github.com/DynamoRIO/drmemory/wiki/How-To-Build.
+
+Then find their build directories:
+
+```bash	
+
+export DR_BUILD_DIR=<path-to-your-dynamorio-build-directory>
+export DRMF_BUILD_DIR=<path-to-your-drmemory-build-directory>
+
+```
+
+Copy header files:
+
+```bash	
+
+cp $DRMF_BUILD_DIR/../umbra/umbra.h $DRMF_BUILD_DIR/drmf/include/umbra.h
+cp $DRMF_BUILD_DIR/../drsyscall/drsyscall.h $DRMF_BUILD_DIR/drmf/include/drsyscall.h
+
+```
+
+We need *DrMemoryFrameworkConfig.cmake* and  *DynamoRIOConfig.cmake* files to build our project. They might be situated in folders *$DRMF_BUILD_DIR/drmf* and *$DR_BUILD_DIR/cmake*
+
+Use cmake:
+
+```bash	
+
+git clone https://github.com/Super-pasha/DrTaint.git
+cd DrTaint
+mkdir build
+cd build
+cmake ../ -DDynamoRIO_DIR=$DR_BUILD_DIR/cmake/ -DDrMemoryFramework_DIR=$DRMF_BUILD_DIR/drmf -DCMAKE_TOOLCHAIN_FILE=toolchain-arm32.cmake
+make
+
+```
+
+Optionally you can add *-DDebug=ON* for building in debug mode
+
+If all was ok, then there are 4 libs with test applications must be created in build/<client-name> folders.
+You can launch them the same way as dynamorio client library:
 
 ```bash
-export CC="arm-linux-gnueabi-gcc"
-export AR="arm-linux-gnueabi-ar"
-export RANLIB="arm-linux-gnueabi-ranlib"
-export CFLAGS="-march=armv7 -mthumb -mfloat-abi=soft"
-export LDFLAGS="-march=armv7 -mthumb -mfloat-abi=soft"
 
-# in glibc directory
-./configure --without-fp --host="arm-linux-gnueabi"
-```
-
-Now, when compiling a userland application, use the following parameters:
+$DR_BUILD_DIR/bin32/drrun -c lib<client-name>.so -- <client-name>_app
 
 ```
-LDFLAGS=-march=armv7 -mfloat-abi=soft -Wl,--rpath=/path/to/new/libc.so.6 -Wl,--dynamic-linker=/path/to/new/ld-linux.so.3
-CFLAGS=-march=armv7 -mfloat-abi=soft
-```
-
-For some reason, this doesn't get rid of *all* fpu/neon instructions (to my knowledge) but
-gets rid of almost all of them.
-
-
-# Launch
-
-once before launching:
- 
-current variables:
-
-	export LD_LIBRARY_PATH=/home/debian/drbuild/drmemory-armhf/exports32/drmf/lib32/release
-	export APP_PATH=/home/debian/drtaint/tests/build/drtaint_test
-	export LIB_PATH=/home/debian/drtaint/build/libdrtaint_test.so
-	export DRIO_PATH=/home/debian/drbuild/dynamorio-armhf/exports/bin32
-
-variants:
-
-	ls /home/debian/drtaint/tests/build
-	export APP_PATH=/home/debian/drtaint/tests/build*
-
-	ls /home/debian/drtaint/build/
-	export LIB_PATH=/home/debian/drtaint/build/*
-
-
-without debugging -> do:
 	
-	$DRIO_PATH/drrun -c $LIB_PATH -- ls
-
--------------
-
-	$DRIO_PATH/drrun -c $LIB_PATH -- $APP_PATH
