@@ -149,7 +149,6 @@ handle_stop_trace(void *drcontext)
 {
     char *buffer = (char *)dr_syscall_get_param(drcontext, 1);
     uint len = dr_syscall_get_param(drcontext, 2);
-    bool ok;
 
     // untaint buffer
     drtaint_set_app_area_taint(drcontext, (app_pc)buffer, len, 0);
@@ -161,12 +160,12 @@ static bool
 handle_check_trace(void *drcontext)
 {
     char *buffer = (char *)dr_syscall_get_param(drcontext, 1);
-    size_t len = dr_syscall_get_param(drcontext, 2);
+    reg_t len = dr_syscall_get_param(drcontext, 2);
     byte result;
     bool ok;
 
     // check the buffer is tainted
-    for (int i = 0; i < len; ++i)
+    for (reg_t i = 0; i < len; ++i)
     {
         ok = drtaint_get_app_taint(drcontext, (app_pc)&buffer[i], &result);
         DR_ASSERT(ok);

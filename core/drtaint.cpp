@@ -9,6 +9,8 @@
 #include "include/drtaint_shadow.h"
 #include "include/drtaint_helper.h"
 
+#pragma region prototypes
+
 static dr_emit_flags_t
 event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       bool for_trace, bool translating, void *user_data);
@@ -25,6 +27,10 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 extern bool
 propagate_simd_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                    int opcode, void *user_data);
+
+#pragma endregion prototypes
+
+#pragma region init_exit
 
 static int drtaint_init_count;
 static client_id_t client_id;
@@ -76,6 +82,10 @@ void drtaint_exit(void)
     drreg_exit();
     drsys_exit();
 }
+
+#pragma endregion init_exit
+
+#pragma region wrappers
 
 bool drtaint_insert_app_to_taint(void *drcontext, instrlist_t *ilist, instr_t *where,
                                  reg_id_t reg_addr, reg_id_t scratch)
@@ -133,9 +143,17 @@ void drtaint_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag
     ds_set_app_area_taint(drcontext, app, size, tag);
 }
 
+#pragma endregion wrappers
+
+#pragma region taint_propagation
+
 /* ======================================================================================
  * main implementation, taint propagation step
  * ==================================================================================== */
+
+#pragma region load_store
+
+#pragma region templates
 
 typedef enum {
     BYTE,
@@ -218,68 +236,33 @@ opnd_t opnd_mem<WORD>(reg_id_t base_reg, int disp)
     return OPND_CREATE_MEM32(base_reg, disp);
 }
 
-#ifdef ASM_TAINT
-
-template <opnd_sz_t T>
-byte get_app_iters()
-{
-    DR_ASSERT_MSG(false, "Unreachable");
-    return {0};
-}
-
-template <>
-byte get_app_iters<BYTE>()
-{
-    return sizeof(char);
-}
-
-template <>
-byte get_app_iters<HALF>()
-{
-    return sizeof(short);
-}
-
-template <>
-byte get_app_iters<WORD>()
-{
-    return sizeof(int);
-}
-
-#endif
+#pragma endregion templates
 
 template <opnd_sz_t sz>
 void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
-    ldr reg1, [mem2]
-
-    We need to save the tag value stored at
-    [mem2] shadow address to shadow register of reg1
-*/
+ *    ldr reg1, [mem2]
+ *
+ *    We need to save the tag value stored at
+ *    [mem2] shadow address to shadow register of reg1
+ */
 {
     opnd_t mem2 = instr_get_src(where, 0);
     if (opnd_is_base_disp(mem2))
     {
         reg_id_t reg1 = opnd_get_reg(instr_get_dst(where, 0));
 
-#ifdef ASM_TAINT
-        ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-#endif
-        auto sreg1 = drreg_reservation{ilist, where};
-        auto sapp2 = drreg_reservation{ilist, where};
+        auto sreg1 = drreg_reservation{drcontext, ilist, where};
+        auto sapp2 = drreg_reservation{drcontext, ilist, where};
 
-        // get the memory address at mem2 and store the result to %sapp2% register
+        // get the memory address at mem2 and store the result to sapp2 register
         drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
 
-#ifdef ASM_TAINT
-        ds_opnds_insert_app_area_to_info(drcontext, ilist, where, sapp2, 1, get_app_iters<sz>());
-        ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
-
-        // get shadow memory addresses of reg1 and [mem2] and place them to %sreg1% and %sapp2%
+        // get shadow memory addresses of reg1 and [mem2] and place them to sreg1 and sapp2
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
         drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
 
-        // place to %sapp2% the value placed at [mem2] shadow address
+        // place to sapp2 the value placed at [mem2] shadow address
         instrlist_meta_preinsert(ilist, where,
                                  instr_load<sz>(drcontext, // ldrXX sapp2, [sapp2]
                                                 opnd_create_reg(sapp2),
@@ -305,13 +288,9 @@ void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
         if (need_3p)
         {
             reg_id_t reg_ind = opnd_get_index(mem2);
+            auto sreg_ind = drreg_reservation{drcontext, ilist, where};
 
-#ifdef ASM_TAINT
-            ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg_ind);
-#endif
-            auto sreg_ind = drreg_reservation{ilist, where};
-
-            // get value of %reg_ind% shadow register and place it to %sreg_ind%
+            // get value of reg_ind shadow register and place it to sreg_ind
             drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg_ind, sreg_ind);
 
             // combine tags
@@ -322,7 +301,7 @@ void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
                                                       opnd_create_reg(sreg_ind)));
         }
 
-        // save the value of %sapp2% to shadow register of reg1
+        // save the value of sapp2 to shadow register of reg1
         instrlist_meta_preinsert_xl8(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sapp2, [sreg1]
                                                         OPND_CREATE_MEM32(sreg1, 0),
@@ -333,11 +312,11 @@ void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
 static void
 propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
-    ldrd reg1, reg2, [mem2]
-
-    We need to save the tag value stored at
-    [mem2] shadow address to shadow registers reg1, reg2
-*/
+ *    ldrd reg1, reg2, [mem2]
+ *
+ *    We need to save the tag value stored at
+ *    [mem2] shadow address to shadow registers reg1, reg2
+ */
 {
     opnd_t mem2 = instr_get_src(where, 0);
     if (opnd_is_base_disp(mem2))
@@ -345,24 +324,13 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         reg_id_t reg1 = opnd_get_reg(instr_get_dst(where, 0));
         reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 1));
 
-#ifdef ASM_TAINT
-        ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-        ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-#endif
-
-        auto sreg1 = drreg_reservation{ilist, where};
-        auto sapp2 = drreg_reservation{ilist, where};
-        auto sapp2n = drreg_reservation{ilist, where};
+        auto sreg1 = drreg_reservation{drcontext, ilist, where};
+        auto sapp2 = drreg_reservation{drcontext, ilist, where};
+        auto sapp2n = drreg_reservation{drcontext, ilist, where};
         reg_id_t sreg2 = sreg1;
 
-        // dereference the memory address at mem2 and store the result to %sapp2% register
+        // dereference the memory address at mem2 and store the result to sapp2 register
         drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
-
-#ifdef ASM_TAINT
-        // causes segmentation fault because of multiple use of drreg_reserve_register
-        //ds_opnds_insert_app_area_to_info(drcontext, ilist, where, sapp2, sizeof(int), 2);
-        //ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
 
         // get [mem2 + 4] address
         instrlist_meta_preinsert(ilist, where,
@@ -371,33 +339,33 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                                        opnd_create_reg(sapp2),
                                                        OPND_CREATE_INT32(4)));
 
-        // get shadow memory addresses of reg1 and [mem2] and place them to %sreg1% and %sapp2%
+        // get shadow memory addresses of reg1 and [mem2] and place them to sreg1 and sapp2
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
         drtaint_insert_reg_to_taint(drcontext, ilist, where, reg1, sreg1);
 
-        // place to %sapp2% the value placed at [mem2] shadow address
+        // place to sapp2 the value placed at [mem2] shadow address
         instrlist_meta_preinsert(ilist, where,
                                  XINST_CREATE_load(drcontext, // ldr sapp2, [sapp2]
                                                    opnd_create_reg(sapp2),
                                                    OPND_CREATE_MEM32(sapp2, 0)));
 
-        // save the value of %sapp2% to shadow register of reg1
+        // save the value of sapp2 to shadow register of reg1
         instrlist_meta_preinsert_xl8(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sapp2, [sreg1]
                                                         OPND_CREATE_MEM32(sreg1, 0),
                                                         opnd_create_reg(sapp2)));
 
-        // get shadow memory addresses of reg2 and [mem2 + 4] and place them to %sreg2% and %sapp2n%
+        // get shadow memory addresses of reg2 and [mem2 + 4] and place them to sreg2 and sapp2n
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2n, sreg2);
         drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
 
-        // place to %sapp2n% the value placed at [mem2 + 4] shadow address
+        // place to sapp2n the value placed at [mem2 + 4] shadow address
         instrlist_meta_preinsert(ilist, where,
                                  XINST_CREATE_load(drcontext, // ldr sapp2n, [sapp2n]
                                                    opnd_create_reg(sapp2n),
                                                    OPND_CREATE_MEM32(sapp2n, 0)));
 
-        // save the value of %sapp2n% to shadow register of reg2
+        // save the value of sapp2n to shadow register of reg2
         instrlist_meta_preinsert_xl8(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sapp2n, [sreg2]
                                                         OPND_CREATE_MEM32(sreg2, 0),
@@ -408,35 +376,26 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 template <opnd_sz_t sz>
 void propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
-    str reg1, [mem2]  
-
-    We need to save the tag value stored in 
-    shadow register of reg1 to shadow address of [mem2] 
-*/
+ *    str reg1, [mem2]  
+ *
+ *    We need to save the tag value stored in 
+ *    shadow register of reg1 to shadow address of [mem2] 
+ */
 {
     opnd_t mem2 = instr_get_dst(where, 0);
     if (opnd_is_base_disp(mem2))
     {
         reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
+        auto sreg1 = drreg_reservation{drcontext, ilist, where};
+        auto sapp2 = drreg_reservation{drcontext, ilist, where};
 
-#ifdef ASM_TAINT
-        ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-#endif
-        auto sreg1 = drreg_reservation{ilist, where};
-        auto sapp2 = drreg_reservation{ilist, where};
-
-        // dereference the memory address at mem2 and store the result to %sapp2% register
+        // dereference the memory address at mem2 and store the result to sapp2 register
         drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
 
-#ifdef ASM_TAINT
-        ds_opnds_insert_app_area_to_info(drcontext, ilist, where, sapp2, 1, get_app_iters<sz>());
-        ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_APP);
-#endif
-
-        // get shadow memory address of [mem2] and place it to %sapp2%
+        // get shadow memory address of [mem2] and place it to sapp2
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
 
-        // get value of shadow register of reg1 and place it to %sreg1%
+        // get value of shadow register of reg1 and place it to sreg1
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
 
         // write the value of reg1 to [mem2] shadow address
@@ -444,47 +403,17 @@ void propagate_str(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
                                      instr_store<sz>(drcontext, // str sreg1, [sapp2]
                                                      opnd_mem<sz>(sapp2, 0),
                                                      opnd_create_reg(sreg1)));
-
-        // if it's a strex then we have to untaint return status register
-        // however, return status register becomes untainted without our help (magic?)
-        // so, these instructions are optional
-        /*
-        int opcode = instr_get_opcode(where);
-        if (opcode == OP_strex ||
-            opcode == OP_strexb ||
-            opcode == OP_strexh)
-        {
-            reg_id_t rd = opnd_get_reg(instr_get_dst(where, 1));
-            reg_id_t srd = sreg1;
-            reg_id_t nullreg = sapp2;
-        
-            // nullreg = 0
-            instrlist_meta_preinsert(ilist, where,
-                                     XINST_CREATE_move(drcontext, // mov nullreg , 0
-                                                       opnd_create_reg(nullreg),
-                                                       OPND_CREATE_INT32(0)));
-        
-            // get shadow register address of %rd% and place it to %srd%
-            drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
-        
-            // write 0 to shadow value of %rd%
-            instrlist_meta_preinsert_xl8(ilist, where,
-                                         XINST_CREATE_store(drcontext,
-                                                           OPND_CREATE_MEM32(srd, 0),
-                                                           opnd_create_reg(nullreg)));
-        }
-        */
     }
 }
 
 static void
 propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
-    strd reg1, reg2, [mem2]  
-
-    We need to save the tag values stored in 
-    shadow registers of reg2 and reg3 to shadow addresses of [mem2] and [mem2 + 4] 
-*/
+ *    strd reg1, reg2, [mem2]  
+ *
+ *    We need to save the tag values stored in 
+ *    shadow registers of reg2 and reg3 to shadow addresses of [mem2] and [mem2 + 4] 
+ */
 {
     opnd_t mem2 = instr_get_dst(where, 0);
     if (opnd_is_base_disp(mem2))
@@ -492,22 +421,12 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
         reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
         reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 1));
 
-#ifdef ASM_TAINT
-        ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-        ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-#endif
-        auto sreg1 = drreg_reservation{ilist, where};
-        auto sapp2 = drreg_reservation{ilist, where};
-        auto sapp2n = drreg_reservation{ilist, where};
+        auto sreg1 = drreg_reservation{drcontext, ilist, where};
+        auto sapp2 = drreg_reservation{drcontext, ilist, where};
+        auto sapp2n = drreg_reservation{drcontext, ilist, where};
 
-        // dereference the memory address at mem2 and store the result to %sapp2% register
+        // dereference the memory address at mem2 and store the result to sapp2 register
         drutil_insert_get_mem_addr(drcontext, ilist, where, mem2, sapp2, sreg1);
-
-#ifdef ASM_TAINT
-        // causes segmentation fault because of multiple use of drreg_reserve_register
-        //ds_opnds_insert_app_area_to_info(drcontext, ilist, where, sapp2, sizeof(int), 2);
-        //ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_APP);
-#endif
 
         // get next 4 bytes after [mem2]
         instrlist_meta_preinsert(ilist, where,
@@ -516,10 +435,10 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                                        opnd_create_reg(sapp2),
                                                        OPND_CREATE_INT32(4)));
         
-        // get shadow memory address of [mem2] and place it to %sapp2%
+        // get shadow memory address of [mem2] and place it to sapp2
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
         
-        // get value of shadow register of reg1 and place it to %sreg1%
+        // get value of shadow register of reg1 and place it to sreg1
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
         
         // write the value of reg1 to [mem2] shadow address
@@ -528,10 +447,10 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                                         OPND_CREATE_MEM32(sapp2, 0),
                                                         opnd_create_reg(sreg1)));
         
-        // get shadow memory address of [mem2 + 4] and place it to %sapp2n%
+        // get shadow memory address of [mem2 + 4] and place it to sapp2n
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2n, sapp2);
         
-        // get value of shadow register of reg2 and place it to %sreg1%
+        // get value of shadow register of reg2 and place it to sreg1
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg1);
         
         // write the shadow value of reg2 to [mem2 + 4] shadow address
@@ -539,57 +458,30 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                      XINST_CREATE_store(drcontext, // str sreg1, [sapp2n]
                                                         OPND_CREATE_MEM32(sapp2n, 0),
                                                         opnd_create_reg(sreg1)));
-
-        // if it's a strexd then we have to untaint return status register
-        // however, return status register becomes untainted without our help (magic?)
-        // so, these instructions are optional
-        /*if (instr_get_opcode(where) == OP_strexd)
-        {
-            reg_id_t rd = opnd_get_reg(instr_get_dst(where, 1));
-            reg_id_t srd = sreg1;
-            reg_id_t nullreg = sapp2;
-
-            // nullreg = 0
-            instrlist_meta_preinsert(ilist, where,
-                                     XINST_CREATE_move(drcontext,
-                                                       opnd_create_reg(nullreg),
-                                                       OPND_CREATE_INT32(0)));
-
-            // get shadow register address of %rd% and place it to %srd%
-            drtaint_insert_reg_to_taint(drcontext, ilist, where, rd, srd);
-
-            // write 0 to shadow value of %rd%
-            instrlist_meta_preinsert_xl8(ilist, where,
-                                         XINST_CREATE_store(drcontext, // str nullreg, [strd]
-                                                            OPND_CREATE_MEM32(srd, 0),
-                                                            opnd_create_reg(nullreg)));
-        }*/
     }
 }
+
+#pragma endregion load_store
+
+#pragma region move
 
 static void
 propagate_mov_regs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                    reg_id_t reg1, reg_id_t reg2)
 /*
-    mov reg2, reg1
-
-    Need to save the tag value of reg1's 
-    shadow register to reg2's shadow register
-*/
+ *    mov reg2, reg1
+ *
+ *    Need to save the tag value of reg1's 
+ *    shadow register to reg2's shadow register
+ */
 {
-#ifdef ASM_TAINT
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-    ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
+    auto sreg2 = drreg_reservation{drcontext, ilist, where};
+    auto sreg1 = drreg_reservation{drcontext, ilist, where};
 
-    auto sreg2 = drreg_reservation{ilist, where};
-    auto sreg1 = drreg_reservation{ilist, where};
-
-    // get value of shadow register of reg1 and place it to %sreg1%
+    // get value of shadow register of reg1 and place it to sreg1
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
 
-    // get shadow register address of reg2 and place it to %sreg2%
+    // get shadow register address of reg2 and place it to sreg2
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
 
     // write shadow value of reg1 to shadow value of reg2
@@ -611,62 +503,57 @@ propagate_mov_reg_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 static void
 propagate_mov_imm_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
-    mov reg2, imm1
-
-    Saves the value of 0 to the shadow register 
-    of reg2 because moving constant to reg2 untaints reg2
-*/
+ *    mov reg2, imm1
+ *
+ *    Saves the value of 0 to the shadow register 
+ *    of reg2 because moving constant to reg2 untaints reg2
+ */
 {
     reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 0));
 
-#ifdef ASM_TAINT
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-    ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
+    auto sreg2 = drreg_reservation{drcontext, ilist, where};
+    auto simm2 = drreg_reservation{drcontext, ilist, where};
 
-    auto sreg2 = drreg_reservation{ilist, where};
-    auto simm2 = drreg_reservation{ilist, where};
-
-    // get shadow register address of reg2 and place it to %sreg2%
+    // get shadow register address of reg2 and place it to sreg2
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
 
-    // place constant imm to register %simm2%
+    // place constant imm to register simm2
     instrlist_meta_preinsert(ilist, where,
                              XINST_CREATE_move(drcontext, // mov simm2, 0
                                                opnd_create_reg(simm2),
                                                OPND_CREATE_INT32(0)));
 
-    // move to shadow register of reg2 the value of imm1
+    // move_propagation to shadow register of reg2 the value of imm1
     instrlist_meta_preinsert(ilist, where,
                              XINST_CREATE_store(drcontext, // str simm2, [sreg2]
                                                 OPND_CREATE_MEM32(sreg2, 0),
                                                 opnd_create_reg(simm2)));
 }
 
+#pragma endregion move
+
+#pragma region arithmetic
+
 static void
 propagate_arith_reg_imm(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
-    [add | sub | ... ] reg2, reg1, imm
-
-    Need to mark reg2 tainted using tag of reg1
-*/
+ *    add reg2, reg1, imm
+ *    sub reg2, reg1, imm
+ *    ...
+ *
+ *    Need to mark reg2 tainted using tag of reg1
+ */
 {
     reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 0));
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
 
-#ifdef ASM_TAINT
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-    ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
+    auto sreg2 = drreg_reservation{drcontext, ilist, where};
+    auto sreg1 = drreg_reservation{drcontext, ilist, where};
 
-    auto sreg2 = drreg_reservation{ilist, where};
-    auto sreg1 = drreg_reservation{ilist, where};
-
-    // get value of shadow register of reg1 and place it to %sreg1%
+    // get value of shadow register of reg1 and place it to sreg1
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
 
-    // get shadow register address of reg2 and place it to %sreg2%
+    // get shadow register address of reg2 and place it to sreg2
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
 
     // write the result to shadow register of reg2
@@ -679,29 +566,24 @@ propagate_arith_reg_imm(void *drcontext, void *tag, instrlist_t *ilist, instr_t 
 static void
 propagate_arith_reg_reg(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
-    [add | sub | ... ] reg3, reg2, reg1
-
-    Need to mark reg3 tainted. 
-    Because its value depends on values of reg2, reg1, 
-    we use OR to combine their impacts to reg3
-*/
+ *    add reg3, reg2, reg1
+ *    sub reg3, reg2, reg1
+ *    ...
+ *
+ *    Need to mark reg3 tainted. 
+ *    Because its value depends on values of reg2, reg1, 
+ *    we use OR to combine their impacts to reg3
+ */
 {
     reg_id_t reg3 = opnd_get_reg(instr_get_dst(where, 0));
     reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 0));
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 1));
 
-#ifdef ASM_TAINT
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg3);
-    ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
+    auto sreg2 = drreg_reservation{drcontext, ilist, where};
+    auto sreg1 = drreg_reservation{drcontext, ilist, where};
+    reg_id_t sreg3 = sreg2; // we reuse a register for this
 
-    auto sreg2 = drreg_reservation{ilist, where};
-    auto sreg1 = drreg_reservation{ilist, where};
-    reg_id_t sreg3 = sreg2; /* we reuse a register for this */
-
-    // get value of shadow registers of reg1, reg2 and place it to %sreg1%, %sreg2%
+    // get value of shadow registers of reg1, reg2 and place it to sreg1, sreg2
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg2);
 
@@ -712,7 +594,7 @@ propagate_arith_reg_reg(void *drcontext, void *tag, instrlist_t *ilist, instr_t 
                                               opnd_create_reg(sreg2),
                                               opnd_create_reg(sreg1)));
 
-    // get shadow address of reg3 and place it to %sreg3%
+    // get shadow address of reg3 and place it to sreg3
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg3, sreg3);
 
     // save the result to shadow address of reg3
@@ -725,32 +607,24 @@ propagate_arith_reg_reg(void *drcontext, void *tag, instrlist_t *ilist, instr_t 
 static void
 propagate_1rd_3rs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /* 
-    mla reg4, reg3, reg2, reg1 
-
-    Need to mark reg4 tainted. 
-    Because its value depends on values of reg3, reg2, reg1, 
-    we use OR to combine their impacts to reg4
-*/
+ *    mla reg4, reg3, reg2, reg1 
+ *
+ *    Need to mark reg4 tainted. 
+ *    Because its value depends on values of reg3, reg2, reg1, 
+ *    we use OR to combine their impacts to reg4
+ */
 {
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 2));
     reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 1));
     reg_id_t reg3 = opnd_get_reg(instr_get_src(where, 0));
     reg_id_t reg4 = opnd_get_reg(instr_get_dst(where, 0));
 
-#ifdef ASM_TAINT
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg3);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg4);
-    ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
-
-    auto sreg1 = drreg_reservation{ilist, where};
-    auto sreg2 = drreg_reservation{ilist, where};
+    auto sreg1 = drreg_reservation{drcontext, ilist, where};
+    auto sreg2 = drreg_reservation{drcontext, ilist, where};
     reg_id_t sreg3 = sreg2;
     reg_id_t sreg4 = sreg3; /* we reuse a register for this */
 
-    // get value of shadow registers of reg1, reg2 and place it to %sreg1%, %sreg2%
+    // get value of shadow registers of reg1, reg2 and place it to sreg1, sreg2
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg2);
 
@@ -761,7 +635,7 @@ propagate_1rd_3rs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where
                                               opnd_create_reg(sreg2),
                                               opnd_create_reg(sreg1)));
 
-    // get value of shadow register of reg3 and place it to %sreg3%
+    // get value of shadow register of reg3 and place it to sreg3
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg3, sreg3);
 
     // combine tags
@@ -771,7 +645,7 @@ propagate_1rd_3rs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where
                                               opnd_create_reg(sreg3),
                                               opnd_create_reg(sreg1)));
 
-    // get address of shadow register of reg4 and place it to %sreg4%
+    // get address of shadow register of reg4 and place it to sreg4
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg4, sreg4);
 
     // save the result to shadow register of reg4
@@ -784,32 +658,24 @@ propagate_1rd_3rs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where
 static void
 propagate_mull(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /* 
-    umull reg4, reg3, reg2, reg1 
-
-    Need to mark reg3 and reg4 tainted. 
-    Because their values depend on values of reg2, reg1, 
-    we use OR to combine their impacts to reg3 and reg4
-*/
+ *    umull reg4, reg3, reg2, reg1 
+ *
+ *    Need to mark reg3 and reg4 tainted. 
+ *    Because their values depend on values of reg2, reg1, 
+ *    we use OR to combine their impacts to reg3 and reg4
+ */
 {
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
     reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 1));
     reg_id_t reg3 = opnd_get_reg(instr_get_dst(where, 0));
     reg_id_t reg4 = opnd_get_reg(instr_get_dst(where, 1));
 
-#ifdef ASM_TAINT
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg3);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg4);
-    ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
-
-    auto sreg1 = drreg_reservation{ilist, where};
-    auto sreg2 = drreg_reservation{ilist, where};
+    auto sreg1 = drreg_reservation{drcontext, ilist, where};
+    auto sreg2 = drreg_reservation{drcontext, ilist, where};
     reg_id_t sreg3 = sreg2; /* we reuse a register for this */
     reg_id_t sreg4 = sreg3;
 
-    // get value of shadow registers of reg1, reg2 and place it to %sreg1%, %sreg2%
+    // get value of shadow registers of reg1, reg2 and place it to sreg1, sreg2
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg2);
 
@@ -820,7 +686,7 @@ propagate_mull(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                               opnd_create_reg(sreg2),
                                               opnd_create_reg(sreg1)));
 
-    // get address of shadow register of reg3 and place it to %sreg3%
+    // get address of shadow register of reg3 and place it to sreg3
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg3, sreg3);
 
     // save the higher part of result to shadow register of reg3
@@ -829,7 +695,7 @@ propagate_mull(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                                 OPND_CREATE_MEM32(sreg3, 0),
                                                 opnd_create_reg(sreg1)));
 
-    // get address of shadow register of reg4 and place it to %sreg4%
+    // get address of shadow register of reg4 and place it to sreg4
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg4, sreg4);
 
     // save the the lower part of result to shadow register of reg4
@@ -842,35 +708,27 @@ propagate_mull(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 static void
 propagate_smlal(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /* 
-    smlal rdlo, rdhi, reg1, reg2 
-
-    rdlo, rdhi - source and destination registers 
-
-    Need to mark rdlo and rdhi tainted. 
-    Because their values depend on values of reg2, reg1
-    we use OR to combine their impacts to rdlo and rdhi    
-*/
+ *    smlal rdlo, rdhi, reg1, reg2 
+ *
+ *    rdlo, rdhi - source and destination registers 
+ *
+ *    Need to mark rdlo and rdhi tainted. 
+ *    Because their values depend on values of reg2, reg1
+ *    we use OR to combine their impacts to rdlo and rdhi    
+ */
 {
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 2));
     reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 3));
     reg_id_t rdlo = opnd_get_reg(instr_get_src(where, 1));
     reg_id_t rdhi = opnd_get_reg(instr_get_src(where, 0));
 
-#ifdef ASM_TAINT
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, rdlo);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, rdhi);
-    ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
-
-    auto sreg1 = drreg_reservation{ilist, where};
-    auto sreg2 = drreg_reservation{ilist, where};
-    auto sreg3 = drreg_reservation{ilist, where};
+    auto sreg1 = drreg_reservation{drcontext, ilist, where};
+    auto sreg2 = drreg_reservation{drcontext, ilist, where};
+    auto sreg3 = drreg_reservation{drcontext, ilist, where};
     reg_id_t srdlo = sreg2;
     reg_id_t srdhi = srdlo;
 
-    // get value of shadow registers of reg1, reg2 and place it to %sreg1%, %sreg2%
+    // get value of shadow registers of reg1, reg2 and place it to sreg1, sreg2
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg2);
 
@@ -887,7 +745,7 @@ propagate_smlal(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                               opnd_create_reg(sreg3),
                                               opnd_create_reg(sreg1)));
 
-    // get value of shadow register of rdlo and place it to %srdlo%
+    // get value of shadow register of rdlo and place it to srdlo
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, rdlo, srdlo);
 
     // combine tags of reg1, reg2, rdlo
@@ -897,7 +755,7 @@ propagate_smlal(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                               opnd_create_reg(srdlo),
                                               opnd_create_reg(sreg1)));
 
-    // get address of shadow register of rdlo and place it to %srdlo%
+    // get address of shadow register of rdlo and place it to srdlo
     drtaint_insert_reg_to_taint(drcontext, ilist, where, rdlo, srdlo);
 
     // save the the lower part of result to shadow register of rdlo
@@ -906,7 +764,7 @@ propagate_smlal(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                                 OPND_CREATE_MEM32(srdlo, 0),
                                                 opnd_create_reg(sreg1)));
 
-    // get value of shadow register of rdhi and place it to %srdhi%
+    // get value of shadow register of rdhi and place it to srdhi
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, rdhi, srdhi);
 
     // combine tags of reg1, reg2, rdhi
@@ -916,7 +774,7 @@ propagate_smlal(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                               opnd_create_reg(srdhi),
                                               opnd_create_reg(sreg3)));
 
-    // get address of shadow register of rdlo and place it to %srdlo%
+    // get address of shadow register of rdlo and place it to srdlo
     drtaint_insert_reg_to_taint(drcontext, ilist, where, rdhi, srdhi);
 
     // save the the higher part of result to shadow register of rdhi
@@ -930,29 +788,23 @@ static void
 propagate_pkhXX(void *drcontext, void *tag, instrlist_t *ilist,
                 instr_t *where, bool is_pkhbt)
 /*
-    pkh [bt | tb] r0, r1, r2
-
-    Need to mark r0 tainted. 
-    r0's tag value depends on 0:15, 16:31 bits of r1, r2
-*/
+ *    pkhbt r0, r1, r2
+ *    pkhtb r0, r1, r2
+ *
+ *    Need to mark r0 tainted. 
+ *    r0's tag value depends on 0:15, 16:31 bits of r1, r2
+ */
 {
     reg_id_t reg0 = opnd_get_reg(instr_get_dst(where, 0));
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
     reg_id_t reg2 = opnd_get_reg(instr_get_src(where, 1));
 
-#ifdef ASM_TAINT
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg0);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg1);
-    ds_opnds_insert_reg_id_to_info(drcontext, ilist, where, reg2);
-    ds_opnds_insert_tainted_to_info(drcontext, ilist, where, SUPPOSE_TAINTED_REG);
-#endif
-
-    auto sreg1 = drreg_reservation{ilist, where};
-    auto sreg2 = drreg_reservation{ilist, where};
-    auto simm = drreg_reservation{ilist, where};
+    auto sreg1 = drreg_reservation{drcontext, ilist, where};
+    auto sreg2 = drreg_reservation{drcontext, ilist, where};
+    auto simm = drreg_reservation{drcontext, ilist, where};
     reg_id_t sreg0 = simm;
 
-    // get 0xFFFF constant and place it to %simm%
+    // get 0xFFFF constant and place it to simm
     instrlist_meta_preinsert(ilist, where,
                              INSTR_CREATE_mov(drcontext,
                                               opnd_create_reg(simm),
@@ -964,7 +816,7 @@ propagate_pkhXX(void *drcontext, void *tag, instrlist_t *ilist,
                                               opnd_create_reg(simm),
                                               OPND_CREATE_INT32(1)));
 
-    // shift %simm% left if pkhtb and get 0xFFFF0000 constant
+    // shift simm left if pkhtb and get 0xFFFF0000 constant
     if (!is_pkhbt)
         instrlist_meta_preinsert(ilist, where,
                                  INSTR_CREATE_lsl(drcontext,
@@ -972,18 +824,18 @@ propagate_pkhXX(void *drcontext, void *tag, instrlist_t *ilist,
                                                   opnd_create_reg(simm),
                                                   OPND_CREATE_INT32(16)));
 
-    // get value of shadow register of reg1 and place it to %sreg1%
+    // get value of shadow register of reg1 and place it to sreg1
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg2);
 
-    // get bits x:y of %sreg1%
+    // get bits x:y of sreg1
     instrlist_meta_preinsert(ilist, where,
                              INSTR_CREATE_and(drcontext,
                                               opnd_create_reg(sreg1),
                                               opnd_create_reg(sreg1),
                                               opnd_create_reg(simm)));
 
-    // shift %simm%: pkhbt -> left | pkhtb -> right
+    // shift simm: pkhbt -> left; pkhtb -> right
     if (!is_pkhbt)
         instrlist_meta_preinsert(ilist, where,
                                  INSTR_CREATE_lsr(drcontext,
@@ -996,20 +848,20 @@ propagate_pkhXX(void *drcontext, void *tag, instrlist_t *ilist,
                                                   opnd_create_reg(simm),
                                                   opnd_create_reg(simm),
                                                   OPND_CREATE_INT32(16)));
-    // get bits x:y of %sreg2%
+    // get bits x:y of sreg2
     instrlist_meta_preinsert(ilist, where,
                              INSTR_CREATE_and(drcontext,
                                               opnd_create_reg(sreg2),
                                               opnd_create_reg(sreg2),
                                               opnd_create_reg(simm)));
-    // combine tags of %sreg1%, %sreg2%
+    // combine tags of sreg1, sreg2
     instrlist_meta_preinsert(ilist, where,
                              INSTR_CREATE_orr(drcontext,
                                               opnd_create_reg(sreg1),
                                               opnd_create_reg(sreg2),
                                               opnd_create_reg(sreg1)));
 
-    // get shadow register address of reg0 and place it to %sreg0%
+    // get shadow register address of reg0 and place it to sreg0
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg0, sreg0);
 
     // write shadow value of reg1 to shadow value of reg2
@@ -1018,6 +870,10 @@ propagate_pkhXX(void *drcontext, void *tag, instrlist_t *ilist,
                                                 OPND_CREATE_MEM32(sreg0, 0),
                                                 opnd_create_reg(sreg1)));
 }
+
+#pragma endregion arithmetic
+
+#pragma region load_store_multiple
 
 // decrement before, increment after, decrement after, increment before
 typedef enum {
@@ -1061,11 +917,11 @@ app_pc calculate_addr<IB>(instr_t *instr, void *base, int i, int top)
 template <stack_dir_t c>
 void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
 /*
-    ldm r, { regs }
-
-    When handling a ldm command we have to save all values of registers
-    that will be popped from a stack to their shadow registers
-*/
+ *    ldm r, { regs }
+ *
+ *    When handling a ldm command we have to save all values of registers
+ *    that will be popped from a stack to their shadow registers
+ */
 {
     void *drcontext = dr_get_current_drcontext();
     instr_t *instr = instr_create(drcontext);
@@ -1074,14 +930,6 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
     int num_dsts = instr_num_dsts(instr);
     if (writeback)
         num_dsts--;
-
-#ifdef ASM_TAINT
-    int opcode = instr_get_opcode(instr);
-    int j = (opcode == OP_ldmia || opcode == OP_ldmib) ? 0 : num_dsts - 1;
-
-    ds_opnds_tainted_to_info(drcontext, SUPPOSE_TAINTED_REG);
-    ds_opnds_app_area_to_info(drcontext, calculate_addr<c>(instr, base, j, num_dsts), 4, num_dsts);
-#endif
 
     for (int i = 0; i < num_dsts; ++i)
     {
@@ -1100,10 +948,6 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
         DR_ASSERT(ok);
         ok = drtaint_set_reg_taint(drcontext, opnd_get_reg(instr_get_dst(instr, i)), res);
         DR_ASSERT(ok);
-
-#ifdef ASM_TAINT
-        ds_opnds_reg_id_to_info(drcontext, opnd_get_reg(instr_get_dst(instr, i)));
-#endif
     }
 
     instr_destroy(drcontext, instr);
@@ -1112,11 +956,11 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
 template <stack_dir_t c>
 void propagate_stm_cc_template(void *pc, void *base, bool writeback)
 /*
-    stm r, { regs }
-    
-    When handling a stm command we have to set all memory 
-    in the stack where the register values will be written tainted
-*/
+ *    stm r, { regs }
+ *    
+ *    When handling a stm command we have to set all memory 
+ *    in the stack where the register values will be written tainted
+ */
 {
     void *drcontext = dr_get_current_drcontext();
     instr_t *instr = instr_create(drcontext);
@@ -1125,14 +969,6 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
     int num_srcs = instr_num_srcs(instr);
     if (writeback)
         num_srcs--;
-
-#ifdef ASM_TAINT
-    int opcode = instr_get_opcode(instr);
-    int j = opcode == OP_stmia || opcode == OP_stmib ? 0 : num_srcs - 1;
-
-    ds_opnds_tainted_to_info(drcontext, SUPPOSE_TAINTED_APP);
-    ds_opnds_app_area_to_info(drcontext, calculate_addr<c>(instr, base, j, num_srcs), 4, num_srcs);
-#endif
 
     for (int i = 0; i < num_srcs; ++i)
     {
@@ -1151,21 +987,21 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
         DR_ASSERT(ok);
         ok = drtaint_set_app_taint4(drcontext, calculate_addr<c>(instr, base, i, num_srcs), res);
         DR_ASSERT(ok);
-
-#ifdef ASM_TAINT
-        ds_opnds_reg_id_to_info(drcontext, opnd_get_reg(instr_get_src(instr, i)));
-#endif
     }
     instr_destroy(drcontext, instr);
 }
 
+#pragma endregion load_store_multiple
+
+#pragma region no_taint
+
 static bool
 instr_handle_constant_func(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
-    xor r0, r1, r1
-
-    This instructions causes r0 to be untainted
-*/
+ *    xor r0, r1, r1
+ *
+ *    This instructions causes r0 to be untainted
+ */
 {
     short opcode = instr_get_opcode(where);
 
@@ -1196,18 +1032,22 @@ instr_handle_constant_func(void *drcontext, void *tag, instrlist_t *ilist, instr
 static void
 untaint_stack(void *drcontext, app_pc sp_val, ptr_int_t imm)
 /*
-    Routine for clearing stack frames before their allocation
-*/
+ *    Routine for clearing stack frames before their allocation
+ */
 {
     drtaint_set_app_area_taint(drcontext, sp_val - imm, imm, 0);
 }
 
+#pragma endregion no_taint
+
+#pragma region taint_flags
+
 static bool
 instr_affects_on_flags(int opcode)
 /*
-    This routine defines instructions 
-    somehow affecting on arithmetic flags
-*/
+ *    This routine defines instructions 
+ *    somehow affecting on arithmetic flags
+ */
 {
     switch (opcode)
     {
@@ -1256,65 +1096,75 @@ instr_affects_on_flags(int opcode)
 static bool
 instr_predicate_is_true(instr_t *where, uint cspr)
 /*
-    This routine checks the predicate of 
-    such instructions as moveq, bne, blxge ... is true
-*/
+ *    This routine checks the predicate of 
+ *    such instructions as move_propagation, bne, blxge ... is true
+ */
 {
     switch (instr_get_predicate(where))
     {
     case DR_PRED_EQ:
-        return DRT_TEST_FLAG_UP(cspr, EFLAGS_Z);
+        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_Z);
 
     case DR_PRED_NE:
-        return DRT_TEST_FLAG_DOWN(cspr, EFLAGS_Z);
+        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_Z);
 
     case DR_PRED_CS:
-        return DRT_TEST_FLAG_UP(cspr, EFLAGS_C);
+        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_C);
 
     case DR_PRED_CC:
-        return DRT_TEST_FLAG_DOWN(cspr, EFLAGS_C);
+        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_C);
 
     case DR_PRED_MI:
-        return DRT_TEST_FLAG_UP(cspr, EFLAGS_N);
+        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_N);
 
     case DR_PRED_PL:
-        return DRT_TEST_FLAG_DOWN(cspr, EFLAGS_N);
+        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N);
 
     case DR_PRED_VS:
-        return DRT_TEST_FLAG_UP(cspr, EFLAGS_V);
+        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_V);
 
     case DR_PRED_VC:
-        return DRT_TEST_FLAG_DOWN(cspr, EFLAGS_V);
+        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_V);
 
-    case DR_PRED_HI: //+
-        return DRT_TEST_FLAG_DOWN(cspr, EFLAGS_Z) && DRT_TEST_FLAG_UP(cspr, EFLAGS_C);
+    case DR_PRED_HI: 
+        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_Z) && DRT_TEST_FLAGS_UP(cspr, EFLAGS_C);
 
-    case DR_PRED_LS: //+
-        return DRT_TEST_FLAG_UP(cspr, EFLAGS_Z) || DRT_TEST_FLAG_DOWN(cspr, EFLAGS_C);
+    case DR_PRED_LS: 
+        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_Z) || DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_C);
 
-    case DR_PRED_GE: //+
+    case DR_PRED_GE: 
         return DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) ||
                DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N | EFLAGS_V);
 
-    case DR_PRED_LT: //+
-        return DRT_TEST_FLAG_UP(cspr, EFLAGS_N) && DRT_TEST_FLAG_DOWN(cspr, EFLAGS_V) ||
-               DRT_TEST_FLAG_DOWN(cspr, EFLAGS_N) && DRT_TEST_FLAG_UP(cspr, EFLAGS_V);
+    case DR_PRED_LT: 
+        return (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N) && DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_V)) ||
+               (DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N) && DRT_TEST_FLAGS_UP(cspr, EFLAGS_V));
 
-    case DR_PRED_GT: //+
-        return (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) && DRT_TEST_FLAG_DOWN(cspr, EFLAGS_Z)) ||
+    case DR_PRED_GT: 
+        return (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) && DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_Z)) ||
                DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N | EFLAGS_V | EFLAGS_Z);
 
-    case DR_PRED_LE: //+
-        return DRT_TEST_FLAG_UP(cspr, EFLAGS_Z) ||
-               DRT_TEST_FLAG_UP(cspr, EFLAGS_N) && DRT_TEST_FLAG_DOWN(cspr, EFLAGS_V) ||
-               DRT_TEST_FLAG_DOWN(cspr, EFLAGS_N) && DRT_TEST_FLAG_UP(cspr, EFLAGS_V);
+    case DR_PRED_LE: 
+        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_Z) ||
+               (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N) && DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_V)) ||
+               (DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N) && DRT_TEST_FLAGS_UP(cspr, EFLAGS_V));
 
     case DR_PRED_AL:
         return true;
+    
+    // function is called with non - predicated instruction
+    default:
+        DR_ASSERT(false);
     }
 
     return false;
 }
+
+#pragma endregion taint_flags
+
+#pragma endregion taint_propagation
+
+#pragma region event_app_handler
 
 /* ======================================================================================
  * main: event app instruction handler
@@ -1327,10 +1177,6 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     // handle only application instructions
     if (instr_is_meta(where))
         return DR_EMIT_DEFAULT;
-
-#ifdef ASM_TAINT
-    ds_opnds_insert_clear_info(drcontext, ilist, where);
-#endif
 
     int opcode = instr_get_opcode(where);
 
@@ -1375,87 +1221,17 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         goto dr_emit_default;
 
 dr_emit_default:
-
-#ifdef ASM_TAINT
-    ds_opnds_insert_callback(drcontext, ilist, where);
-#endif
     return DR_EMIT_DEFAULT;
 }
 
 /* ======================================================================================
- * system call clearing and handling routines
- * ==================================================================================== */
-
-static bool
-drsys_iter_cb(drsys_arg_t *arg, void *drcontext)
-/*
-    Set syscall output parameters untainted 
-*/
-{
-    if (!arg->valid)
-        return true;
-
-    if (arg->pre)
-        return true;
-
-#define TEST(mask, var) (((mask) & (var)) != 0)
-
-    if (TEST(arg->mode, DRSYS_PARAM_OUT))
-    {
-        char *buffer = (char *)arg->start_addr;
-        for (int i = 0; i < arg->size; ++i)
-        {
-            if (!drtaint_set_app_taint(drcontext,
-                                       (app_pc)buffer + i, 0))
-                DR_ASSERT(false);
-        }
-    }
-#undef TEST
-    return true;
-}
-
-static bool
-event_pre_syscall(void *drcontext, int sysnum)
-{
-    if (drsys_iterate_memargs(drcontext, drsys_iter_cb, drcontext) !=
-        DRMF_SUCCESS)
-        DR_ASSERT(false);
-    return true;
-}
-
-static void
-event_post_syscall(void *drcontext, int sysnum)
-{
-    dr_syscall_result_info_t info = {
-        sizeof(info),
-    };
-    dr_syscall_get_result_ex(drcontext, &info);
-
-    /* all syscalls untaint rax */
-    drtaint_set_reg_taint(drcontext, DR_REG_R0, (byte)0);
-
-    if (!info.succeeded)
-    {
-        /* We only care about tainting if the syscall
-         * succeeded.
-         */
-        return;
-    }
-
-    /* clear taint for system calls with an OUT memarg param */
-    if (drsys_iterate_memargs(drcontext, drsys_iter_cb, drcontext) !=
-        DRMF_SUCCESS)
-        DR_ASSERT(false);
-}
-
-/* ======================================================================================
- * default isa taint propagation handling
+ * default ISA taint propagation handling
  * ==================================================================================== */
 
 /*  
-    We define a routine to make it easier to call drreg_restore_app_value() in
-    the case that we have to swap a register out to make space for the stolen reg.
-*/
+ *    We define a routine to make it easier to call drreg_restore_app_value() in
+ *    the case that we have to swap a register out to make space for the stolen reg.
+ */
 #define DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, opnd, cb)      \
     do                                                                  \
     {                                                                   \
@@ -1640,7 +1416,9 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         /* These aren't mov's per se, but they only accept 1
          * reg source and 1 reg dest.
          */
-        if (instr_num_dsts(where) > 0) // some instructions contain optional Rd
+
+        // some instructions contain optional Rd
+        if (instr_num_dsts(where) > 0) 
             propagate_mov_reg_src(drcontext, tag, ilist, where);
 
         break;
@@ -1839,7 +1617,7 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     case OP_blx:
     case OP_blx_ind:
 
-        // lr = next_instr(pc)
+        // lr containts next instruction address after pc
         // then taint lr
         propagate_mov_regs(drcontext, tag, ilist, where,
                            DR_REG_LR, DR_REG_PC);
@@ -1868,3 +1646,73 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 
     return true;
 }
+
+#pragma endregion event_app_handler
+
+#pragma region syscall_handling
+
+/* ======================================================================================
+ * system call clearing and handling routines
+ * ==================================================================================== */
+
+static bool
+drsys_iter_cb(drsys_arg_t *arg, void *drcontext)
+/*
+    Set syscall output parameters untainted 
+*/
+{
+    if (!arg->valid)
+        return true;
+
+    if (arg->pre)
+        return true;
+
+    if (TEST(arg->mode, DRSYS_PARAM_OUT))
+    {
+        char *buffer = (char *)arg->start_addr;
+        for (size_t i = 0; i < arg->size; ++i)
+        {
+            if (!drtaint_set_app_taint(drcontext,
+                                       (app_pc)buffer + i, 0))
+                DR_ASSERT(false);
+        }
+    }
+
+    return true;
+}
+
+static bool
+event_pre_syscall(void *drcontext, int sysnum)
+{
+    if (drsys_iterate_memargs(drcontext, drsys_iter_cb, drcontext) !=
+        DRMF_SUCCESS)
+        DR_ASSERT(false);
+    return true;
+}
+
+static void
+event_post_syscall(void *drcontext, int sysnum)
+{
+    dr_syscall_result_info_t info = {
+        sizeof(info),
+    };
+    dr_syscall_get_result_ex(drcontext, &info);
+
+    /* all syscalls untaint rax */
+    drtaint_set_reg_taint(drcontext, DR_REG_R0, (byte)0);
+
+    if (!info.succeeded)
+    {
+        /* We only care about tainting if the syscall
+         * succeeded.
+         */
+        return;
+    }
+
+    /* clear taint for system calls with an OUT memarg param */
+    if (drsys_iterate_memargs(drcontext, drsys_iter_cb, drcontext) !=
+        DRMF_SUCCESS)
+        DR_ASSERT(false);
+}
+
+#pragma endregion syscall_handling

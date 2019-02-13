@@ -1,14 +1,12 @@
 #include "include/drtaint_helper.h"
-
-#define TEST_BIT_UP(word, bit) ((word & (1 << bit)))
-#define TEST_BIT_DOWN(word, bit) (!(word & (1 << bit)))
+#include "drmgr.h"
 
 drreg_reservation::
-    drreg_reservation(instrlist_t *ilist, instr_t *where)
-    : drcontext_(dr_get_current_drcontext()),
-      ilist_(ilist), where_(where)
+    drreg_reservation(void* drcontext, instrlist_t *ilist, instr_t *where)
+    : drcontext_(drcontext), ilist_(ilist), where_(where)
 {
-    DR_ASSERT(drreg_reserve_register(drcontext_, ilist_, where_, NULL, &reg_) == DRREG_SUCCESS);
+    bool status = drreg_reserve_register(drcontext_, ilist_, where_, NULL, &reg_);
+    DR_ASSERT(status == DRREG_SUCCESS);
 }
 
 drreg_reservation::
@@ -19,24 +17,24 @@ drreg_reservation::
 
 bool is_offs_addr(uint raw_instr_bits)
 {
-    return TEST_BIT_UP(raw_instr_bits, 24) &&
-           TEST_BIT_DOWN(raw_instr_bits, 21);
+    return IS_BIT_UP(raw_instr_bits, 24) &&
+           IS_BIT_DOWN(raw_instr_bits, 21);
 }
 
 bool is_pre_addr(uint raw_instr_bits)
 {
-    return TEST_BIT_UP(raw_instr_bits, 24) &&
-           TEST_BIT_UP(raw_instr_bits, 21);
+    return IS_BIT_UP(raw_instr_bits, 24) &&
+           IS_BIT_UP(raw_instr_bits, 21);
 }
 
 bool is_pre_or_offs_addr(uint raw_instr_bits)
 {
-    return TEST_BIT_UP(raw_instr_bits, 24);
+    return IS_BIT_UP(raw_instr_bits, 24);
 }
 
 bool is_post_addr(uint raw_instr_bits)
 {
-    return TEST_BIT_DOWN(raw_instr_bits, 24);
+    return IS_BIT_DOWN(raw_instr_bits, 24);
 }
 
 void unimplemented_opcode(instr_t *where)

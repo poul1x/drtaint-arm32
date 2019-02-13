@@ -44,7 +44,7 @@ usage();
 static void
 run_tests_with_prefix(char *prefix, size_t len);
 
-Test gTests[] = {
+Test g_tests[] = {
 
     {"simple", test_simple},
     {"arith", test_arith},
@@ -95,7 +95,7 @@ Test gTests[] = {
     {"pkhXX", test_asm_pkhXX},
 };
 
-const int gTests_sz = sizeof(gTests) / sizeof(gTests[0]);
+const int g_tests_sz = sizeof(g_tests) / sizeof(g_tests[0]);
 
 int main(int argc, char *argv[])
 {
@@ -162,9 +162,9 @@ Test *find_test(const char *name)
 {
     Test *pt;
 
-    for (int i = 0; i < gTests_sz; i++)
+    for (int i = 0; i < g_tests_sz; i++)
     {
-        pt = &gTests[i];
+        pt = &g_tests[i];
 
         if (!strcmp(name, pt->name))
             return pt;
@@ -179,9 +179,9 @@ void run_all_tests()
     bool passed;
     Test *ptest;
 
-    for (int i = 1; i < gTests_sz; i++)
+    for (int i = 1; i < g_tests_sz; i++)
     {
-        ptest = &gTests[i];
+        ptest = &g_tests[i];
 
         printf("\n\n--- Running test %s--- \n\n", ptest->name);
         passed = ptest->run();
@@ -202,9 +202,9 @@ void run_tests_with_prefix(char *prefix, size_t len)
     bool passed;
     Test *ptest;
 
-    for (int i = 1; i < gTests_sz; i++)
+    for (int i = 1; i < g_tests_sz; i++)
     {
-        ptest = &gTests[i];
+        ptest = &g_tests[i];
 
         if (!strncmp(ptest->name, prefix, len))
         {
@@ -227,8 +227,8 @@ void show_all_tests()
 {
     printf("Available tests:\n");
 
-    for (int i = 0; i < gTests_sz; i++)
-        printf("  %-3d %s\n", i + 1, gTests[i].name);
+    for (int i = 0; i < g_tests_sz; i++)
+        printf("  %-3d %s\n", i + 1, g_tests[i].name);
 }
 
 void usage()
@@ -892,44 +892,44 @@ bool test_asm_ldr_reg()
 }
 
 #ifndef MTHUMB
-#define CHECK_ALL1(com, r0, r1, r2)            \
-    printf("Both tainted:\n");                 \
-    INL_REG(com, r0, r1, r2);                  \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-    INL_REG_PRE(com, r0, r1, r2);              \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
+#   define CHECK_ALL1(com, r0, r1, r2)            \
+       printf("Both tainted:\n");                 \
+       INL_REG(com, r0, r1, r2);                  \
+       TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
+       INL_REG_PRE(com, r0, r1, r2);              \
+       TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
 
-#define CHECK_ALL2(com, r0, r1, r2)             \
-    printf("Both untainted:\n");                \
-    INL_REG(com, r0, r1, r2);                   \
-    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
-    INL_REG_PRE(com, r0, r1, r2);               \
-    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
+#   define CHECK_ALL2(com, r0, r1, r2)             \
+       printf("Both untainted:\n");                \
+       INL_REG(com, r0, r1, r2);                   \
+       TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
+       INL_REG_PRE(com, r0, r1, r2);               \
+       TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
 
-#define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd)            \
-    printf("R1 is tainted:\n");                                 \
-    INL_REG(com, r0, r1, r2);                                   \
-    TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
-    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd)); \
-    INL_REG_PRE(com, r0, r1, r2);                               \
-    TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
-    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
+#   define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd)            \
+       printf("R1 is tainted:\n");                                 \
+       INL_REG(com, r0, r1, r2);                                   \
+       TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
+       TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd)); \
+       INL_REG_PRE(com, r0, r1, r2);                               \
+       TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
+       TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
 #else
-#define CHECK_ALL1(com, r0, r1, r2) \
-    printf("Both tainted:\n");      \
-    INL_REG(com, r0, r1, r2);       \
-    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
+#   define CHECK_ALL1(com, r0, r1, r2) \
+       printf("Both tainted:\n");      \
+       INL_REG(com, r0, r1, r2);       \
+       TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
 
-#define CHECK_ALL2(com, r0, r1, r2) \
-    printf("Both untainted:\n");    \
-    INL_REG(com, r0, r1, r2);       \
-    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
+#   define CHECK_ALL2(com, r0, r1, r2) \
+       printf("Both untainted:\n");    \
+       INL_REG(com, r0, r1, r2);       \
+       TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
 
-#define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd) \
-    printf("R1 is tainted:\n");                      \
-    INL_REG(com, r0, r1, r2);                        \
-    TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));            \
-    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
+#   define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd) \
+       printf("R1 is tainted:\n");                      \
+       INL_REG(com, r0, r1, r2);                        \
+       TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));            \
+       TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
 #endif
 
 bool test_asm_ldr_reg_ex()
@@ -947,7 +947,7 @@ bool test_asm_ldr_reg_ex()
     int reg_offs = 7 * sizeof(int);
 
     // ------------------------------ 1
-    MAKE_TAINTED(A + reg_offs, sizeof(int));
+    MAKE_TAINTED((char*)A + reg_offs, sizeof(int));
     MAKE_TAINTED(&reg_offs, sizeof(int));
 
     CHECK_ALL1(ldr, v, pA, reg_offs);

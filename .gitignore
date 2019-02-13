@@ -1,2 +1,5 @@
 build/*
 .vscode/*
+doc/*
+configure.sh
+transfer.sh

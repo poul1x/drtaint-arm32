@@ -9,8 +9,8 @@ draslrharden_cli.cpp
 ../../core/drtaint_helper.cpp
 )
 
-set(CMAKE_C_FLAGS "-mthumb -Wall")
-set(CMAKE_CXX_FLAGS "-mthumb -Wall")
+set(CMAKE_C_FLAGS "-mthumb -Wall -Wno-unknown-pragmas")
+set(CMAKE_CXX_FLAGS "-mthumb -Wall -Wno-unknown-pragmas")
 
 if (Debug)
     message(STATUS "libdraslrharden.so: configuring debug build")
@@ -42,6 +42,4 @@ else()
 endif (Thumb)
 
 # build aplications for client library
-add_executable(simple_argv_app simple_argv_app.c)
-add_executable(simple_code_leaks_app simple_code_leaks_app.c)
-add_executable(simple_leaks_app simple_leaks_app.c)
+add_executable(draslrharden_app draslrharden_app.c)

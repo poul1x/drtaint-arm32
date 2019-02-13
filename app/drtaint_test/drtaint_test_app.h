@@ -10,7 +10,7 @@
     (write(FD_APP_IS_TRACED, mem, mem_sz) == DRTAINT_SUCCESS)
 
 #define IS_NOT_TAINTED(mem, mem_sz) \
-    (mem_sz == 0 ? true : !IS_TAINTED(mem, mem_sz))
+    ((mem_sz) == 0 ? true : !IS_TAINTED(mem, mem_sz))
 
 #define MAKE_TAINTED(mem, mem_sz) \
     assert(write(FD_APP_START_TRACE, mem, mem_sz) == DRTAINT_SUCCESS)
