@@ -115,22 +115,22 @@ bool ds_get_app_taint4(void *drcontext, app_pc app, uint *result)
     return status == DRMF_SUCCESS;
 }
 
-bool ds_set_app_taint(void *drcontext, app_pc app, byte result)
+bool ds_set_app_taint(void *drcontext, app_pc app, byte value)
 {
     size_t sz = 1;
-    drmf_status_t status = umbra_write_shadow_memory(umbra_map, app, 1, &sz, &result);
+    drmf_status_t status = umbra_write_shadow_memory(umbra_map, app, 1, &sz, &value);
     return status == DRMF_SUCCESS;
 }
 
-bool ds_set_app_taint4(void *drcontext, app_pc app, uint result)
+bool ds_set_app_taint4(void *drcontext, app_pc app, uint value)
 {
     size_t sz = sizeof(uint);
     drmf_status_t status = umbra_write_shadow_memory(umbra_map, app,
-                                                     sizeof(uint), &sz, (byte *)&result);
+                                                     sizeof(uint), &sz, (byte *)&value);
     return status == DRMF_SUCCESS;
 }
 
-void ds_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag)
+void ds_set_app_area_taint(void *drcontext, app_pc app, uint size, byte value)
 /*
  *  Set linear memory area tainted, 
  *  beginning from %app% and filling %size% bytes 
@@ -138,12 +138,12 @@ void ds_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag)
 {
     uint cnt4 = size / 4, cnt1 = size % 4;
     uint start = 0, end = cnt4 * 4, i;
-    uint tag4 = tag + (tag << 8) + (tag << 16) + (tag << 24);
+    uint value4 = value + (value << 8) + (value << 16) + (value << 24);
     bool ok;
 
     for (i = start; i < end; i += 4)
     {
-        ok = ds_set_app_taint4(drcontext, &app[i], tag4);
+        ok = ds_set_app_taint4(drcontext, &app[i], value4);
         DR_ASSERT(ok);
     }
 
@@ -151,7 +151,7 @@ void ds_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag)
     end += cnt1;
     for (i = start; i < end; i++)
     {
-        ok = ds_set_app_taint(drcontext, &app[i], tag);
+        ok = ds_set_app_taint(drcontext, &app[i], value);
         DR_ASSERT(ok);
     }
 }

@@ -27,11 +27,13 @@ bool ds_set_reg_taint(void *drcontext, reg_id_t reg, uint value);
 
 bool ds_get_app_taint(void *drcontext, app_pc app, byte *result);
 
-bool ds_set_app_taint(void *drcontext, app_pc app, byte result);
+bool ds_set_app_taint(void *drcontext, app_pc app, byte value);
 
 bool ds_get_app_taint4(void *drcontext, app_pc app, uint *result);
 
-bool ds_set_app_taint4(void *drcontext, app_pc app, uint result);
+bool ds_set_app_taint4(void *drcontext, app_pc app, uint value);
+
+void ds_set_app_area_taint(void *drcontext, app_pc app, uint size, byte value);
 
 void ds_save_instr(void *drcontext, int opcode);
 
@@ -41,7 +43,6 @@ void ds_update_cpsr(void *drcontext, uint new_flags);
 
 uint ds_get_cpsr(void *drcontext);
 
-void ds_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag);
 
 #ifdef __cplusplus
 }

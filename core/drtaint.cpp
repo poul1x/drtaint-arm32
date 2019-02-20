@@ -9,6 +9,12 @@
 #include "include/drtaint_shadow.h"
 #include "include/drtaint_helper.h"
 
+// TODO: rewrite condition execution handlers
+// TODO: create propagation handlers for bitwise operations
+// TODO: create propagation handlers for instructions left
+// TODO: create slicer sample
+// TODO: comment all, make debug execution
+
 #pragma region prototypes
 
 static dr_emit_flags_t
@@ -123,9 +129,9 @@ bool drtaint_get_app_taint(void *drcontext, app_pc app, byte *result)
     return ds_get_app_taint(drcontext, app, result);
 }
 
-bool drtaint_set_app_taint(void *drcontext, app_pc app, byte result)
+bool drtaint_set_app_taint(void *drcontext, app_pc app, byte value)
 {
-    return ds_set_app_taint(drcontext, app, result);
+    return ds_set_app_taint(drcontext, app, value);
 }
 
 bool drtaint_get_app_taint4(void *drcontext, app_pc app, uint *result)
@@ -133,14 +139,14 @@ bool drtaint_get_app_taint4(void *drcontext, app_pc app, uint *result)
     return ds_get_app_taint4(drcontext, app, result);
 }
 
-bool drtaint_set_app_taint4(void *drcontext, app_pc app, uint result)
+bool drtaint_set_app_taint4(void *drcontext, app_pc app, uint value)
 {
-    return ds_set_app_taint4(drcontext, app, result);
+    return ds_set_app_taint4(drcontext, app, value);
 }
 
-void drtaint_set_app_area_taint(void *drcontext, app_pc app, uint size, byte tag)
+void drtaint_set_app_area_taint(void *drcontext, app_pc app, uint size, byte value)
 {
-    ds_set_app_area_taint(drcontext, app, size, tag);
+    ds_set_app_area_taint(drcontext, app, size, value);
 }
 
 #pragma endregion wrappers
@@ -268,22 +274,22 @@ void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
                                                 opnd_create_reg(sapp2),
                                                 opnd_mem<sz>(sapp2, 0)));
 
-        // determine if need to propagate 3d policy
+        // determine if need to propagate 3rd policy
         bool need_3p = false;
-        if (dr_get_isa_mode(drcontext) == DR_ISA_ARM_THUMB &&
-            opnd_num_regs_used(mem2) == 2)
+        if (opnd_num_regs_used(mem2) == 2)
         {
-            need_3p = true;
-        }
-
-        else
-        {
-            uint raw_bits = instr_get_raw_word(where, 0);
-            if (opnd_num_regs_used(mem2) == 2 && is_pre_or_offs_addr(raw_bits))
+            // it may be 2-byte thumb instruction or 4-byte ARM
+            if (instr_length(drcontext, where) == 2)
                 need_3p = true;
+            else
+            {
+                uint raw_bits = instr_get_raw_word(where, 0);
+                if (opnd_num_regs_used(mem2) == 2 && is_pre_or_offs_addr(raw_bits))
+                    need_3p = true;
+            }
         }
 
-        // propagate 3d policy: ldr r0, [r1, r2].
+        // propagate 3rd policy: ldr r0, [r1, r2].
         // If r2 is tainted then r0 is tainted too
         if (need_3p)
         {
@@ -434,25 +440,25 @@ propagate_strd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                                        opnd_create_reg(sapp2n),
                                                        opnd_create_reg(sapp2),
                                                        OPND_CREATE_INT32(4)));
-        
+
         // get shadow memory address of [mem2] and place it to sapp2
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2, sreg1);
-        
+
         // get value of shadow register of reg1 and place it to sreg1
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
-        
+
         // write the value of reg1 to [mem2] shadow address
         instrlist_meta_preinsert_xl8(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sreg1, [sapp2]
                                                         OPND_CREATE_MEM32(sapp2, 0),
                                                         opnd_create_reg(sreg1)));
-        
+
         // get shadow memory address of [mem2 + 4] and place it to sapp2n
         drtaint_insert_app_to_taint(drcontext, ilist, where, sapp2n, sapp2);
-        
+
         // get value of shadow register of reg2 and place it to sreg1
         drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg2, sreg1);
-        
+
         // write the shadow value of reg2 to [mem2 + 4] shadow address
         instrlist_meta_preinsert_xl8(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sreg1, [sapp2n]
@@ -498,36 +504,6 @@ propagate_mov_reg_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 0));
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 0));
     propagate_mov_regs(drcontext, tag, ilist, where, reg1, reg2);
-}
-
-static void
-propagate_mov_imm_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
-/*
- *    mov reg2, imm1
- *
- *    Saves the value of 0 to the shadow register 
- *    of reg2 because moving constant to reg2 untaints reg2
- */
-{
-    reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 0));
-
-    auto sreg2 = drreg_reservation{drcontext, ilist, where};
-    auto simm2 = drreg_reservation{drcontext, ilist, where};
-
-    // get shadow register address of reg2 and place it to sreg2
-    drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
-
-    // place constant imm to register simm2
-    instrlist_meta_preinsert(ilist, where,
-                             XINST_CREATE_move(drcontext, // mov simm2, 0
-                                               opnd_create_reg(simm2),
-                                               OPND_CREATE_INT32(0)));
-
-    // move_propagation to shadow register of reg2 the value of imm1
-    instrlist_meta_preinsert(ilist, where,
-                             XINST_CREATE_store(drcontext, // str simm2, [sreg2]
-                                                OPND_CREATE_MEM32(sreg2, 0),
-                                                opnd_create_reg(simm2)));
 }
 
 #pragma endregion move
@@ -995,6 +971,36 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
 
 #pragma region no_taint
 
+static void
+propagate_mov_imm_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
+/*
+ *    mov reg2, imm1
+ *
+ *    Saves the value of 0 to the shadow register 
+ *    of reg2 because moving constant to reg2 untaints reg2
+ */
+{
+    reg_id_t reg2 = opnd_get_reg(instr_get_dst(where, 0));
+
+    auto sreg2 = drreg_reservation{drcontext, ilist, where};
+    auto simm2 = drreg_reservation{drcontext, ilist, where};
+
+    // get shadow register address of reg2 and place it to sreg2
+    drtaint_insert_reg_to_taint(drcontext, ilist, where, reg2, sreg2);
+
+    // place constant imm to register simm2
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_move(drcontext, // mov simm2, 0
+                                               opnd_create_reg(simm2),
+                                               OPND_CREATE_INT32(0)));
+
+    // move_propagation to shadow register of reg2 the value of imm1
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_store(drcontext, // str simm2, [sreg2]
+                                                OPND_CREATE_MEM32(sreg2, 0),
+                                                opnd_create_reg(simm2)));
+}
+
 static bool
 instr_handle_constant_func(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
 /*
@@ -1126,32 +1132,32 @@ instr_predicate_is_true(instr_t *where, uint cspr)
     case DR_PRED_VC:
         return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_V);
 
-    case DR_PRED_HI: 
+    case DR_PRED_HI:
         return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_Z) && DRT_TEST_FLAGS_UP(cspr, EFLAGS_C);
 
-    case DR_PRED_LS: 
+    case DR_PRED_LS:
         return DRT_TEST_FLAGS_UP(cspr, EFLAGS_Z) || DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_C);
 
-    case DR_PRED_GE: 
+    case DR_PRED_GE:
         return DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) ||
                DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N | EFLAGS_V);
 
-    case DR_PRED_LT: 
+    case DR_PRED_LT:
         return (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N) && DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_V)) ||
                (DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N) && DRT_TEST_FLAGS_UP(cspr, EFLAGS_V));
 
-    case DR_PRED_GT: 
+    case DR_PRED_GT:
         return (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) && DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_Z)) ||
                DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N | EFLAGS_V | EFLAGS_Z);
 
-    case DR_PRED_LE: 
+    case DR_PRED_LE:
         return DRT_TEST_FLAGS_UP(cspr, EFLAGS_Z) ||
                (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N) && DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_V)) ||
                (DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N) && DRT_TEST_FLAGS_UP(cspr, EFLAGS_V));
 
     case DR_PRED_AL:
         return true;
-    
+
     // function is called with non - predicated instruction
     default:
         DR_ASSERT(false);
@@ -1228,20 +1234,6 @@ dr_emit_default:
  * default ISA taint propagation handling
  * ==================================================================================== */
 
-/*  
- *    We define a routine to make it easier to call drreg_restore_app_value() in
- *    the case that we have to swap a register out to make space for the stolen reg.
- */
-#define DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, opnd, cb)      \
-    do                                                                  \
-    {                                                                   \
-        reg_id_t swap = DR_REG_NULL;                                    \
-        drreg_restore_app_values(drcontext, ilist, where, opnd, &swap); \
-        cb;                                                             \
-        if (swap != DR_REG_NULL)                                        \
-            drreg_unreserve_register(drcontext, ilist, where, swap);    \
-    } while (false);
-
 static bool
 propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       int opcode, void *user_data)
@@ -1252,76 +1244,68 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     switch (opcode)
     {
     case OP_ldmia:
-        DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, instr_get_src(where, 0), {
-            dr_insert_clean_call(drcontext, ilist, where, (void *)propagate_ldm_cc_template<IA>,
-                                 false, 3, OPND_CREATE_INTPTR(instr_get_app_pc(where)),
-                                 opnd_create_reg(opnd_get_base(instr_get_src(where, 0))),
-                                 /* writeback */
-                                 OPND_CREATE_INT8(instr_num_srcs(where) > 1));
-        });
+        dr_insert_clean_call(
+            drcontext, ilist, where, (void *)propagate_ldm_cc_template<IA>, false, 3,
+            OPND_CREATE_INTPTR(instr_get_app_pc(where)),
+            opnd_create_reg(opnd_get_base(instr_get_src(where, 0))),
+            /* writeback */
+            OPND_CREATE_INT8(instr_num_srcs(where) > 1));
         break;
+
     case OP_ldmdb:
-        DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, instr_get_src(where, 0), {
-            dr_insert_clean_call(drcontext, ilist, where, (void *)propagate_ldm_cc_template<DB>,
-                                 false, 3, OPND_CREATE_INTPTR(instr_get_app_pc(where)),
-                                 opnd_create_reg(opnd_get_base(instr_get_src(where, 0))),
-                                 /* writeback */
-                                 OPND_CREATE_INT8(instr_num_srcs(where) > 1));
-        });
+        dr_insert_clean_call(
+            drcontext, ilist, where, (void *)propagate_ldm_cc_template<DB>, false, 3,
+            OPND_CREATE_INTPTR(instr_get_app_pc(where)),
+            opnd_create_reg(opnd_get_base(instr_get_src(where, 0))),
+            OPND_CREATE_INT8(instr_num_srcs(where) > 1));
         break;
+
     case OP_ldmib:
-        DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, instr_get_src(where, 0), {
-            dr_insert_clean_call(drcontext, ilist, where, (void *)propagate_ldm_cc_template<IB>,
-                                 false, 3, OPND_CREATE_INTPTR(instr_get_app_pc(where)),
-                                 opnd_create_reg(opnd_get_base(instr_get_src(where, 0))),
-                                 /* writeback */
-                                 OPND_CREATE_INT8(instr_num_srcs(where) > 1));
-        });
+        dr_insert_clean_call(
+            drcontext, ilist, where, (void *)propagate_ldm_cc_template<IB>, false, 3,
+            OPND_CREATE_INTPTR(instr_get_app_pc(where)),
+            opnd_create_reg(opnd_get_base(instr_get_src(where, 0))),
+            OPND_CREATE_INT8(instr_num_srcs(where) > 1));
         break;
+
     case OP_ldmda:
-        DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, instr_get_src(where, 0), {
-            dr_insert_clean_call(drcontext, ilist, where, (void *)propagate_ldm_cc_template<DA>,
-                                 false, 3, OPND_CREATE_INTPTR(instr_get_app_pc(where)),
-                                 opnd_create_reg(opnd_get_base(instr_get_src(where, 0))),
-                                 /* writeback */
-                                 OPND_CREATE_INT8(instr_num_srcs(where) > 1));
-        });
+        dr_insert_clean_call(
+            drcontext, ilist, where, (void *)propagate_ldm_cc_template<DA>, false, 3,
+            OPND_CREATE_INTPTR(instr_get_app_pc(where)),
+            opnd_create_reg(opnd_get_base(instr_get_src(where, 0))),
+            OPND_CREATE_INT8(instr_num_srcs(where) > 1));
         break;
+
     case OP_stmia:
-        DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, instr_get_dst(where, 0), {
-            dr_insert_clean_call(drcontext, ilist, where, (void *)propagate_stm_cc_template<IA>,
-                                 false, 3, OPND_CREATE_INTPTR(instr_get_app_pc(where)),
-                                 opnd_create_reg(opnd_get_base(instr_get_dst(where, 0))),
-                                 /* writeback */
-                                 OPND_CREATE_INT8(instr_num_dsts(where) > 1));
-        });
+        dr_insert_clean_call(
+            drcontext, ilist, where, (void *)propagate_stm_cc_template<IA>, false, 3,
+            OPND_CREATE_INTPTR(instr_get_app_pc(where)),
+            opnd_create_reg(opnd_get_base(instr_get_dst(where, 0))),
+            OPND_CREATE_INT8(instr_num_dsts(where) > 1));
         break;
+
     case OP_stmdb:
-        DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, instr_get_dst(where, 0), {
-            dr_insert_clean_call(drcontext, ilist, where, (void *)propagate_stm_cc_template<DB>,
-                                 false, 3, OPND_CREATE_INTPTR(instr_get_app_pc(where)),
-                                 opnd_create_reg(opnd_get_base(instr_get_dst(where, 0))),
-                                 /* writeback */
-                                 OPND_CREATE_INT8(instr_num_dsts(where) > 1));
-        });
+        dr_insert_clean_call(
+            drcontext, ilist, where, (void *)propagate_stm_cc_template<DB>, false, 3,
+            OPND_CREATE_INTPTR(instr_get_app_pc(where)),
+            opnd_create_reg(opnd_get_base(instr_get_dst(where, 0))),
+            OPND_CREATE_INT8(instr_num_dsts(where) > 1));
         break;
+
     case OP_stmib:
-        DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, instr_get_dst(where, 0), {
-            dr_insert_clean_call(drcontext, ilist, where, (void *)propagate_stm_cc_template<IB>,
-                                 false, 3, OPND_CREATE_INTPTR(instr_get_app_pc(where)),
-                                 opnd_create_reg(opnd_get_base(instr_get_dst(where, 0))),
-                                 /* writeback */
-                                 OPND_CREATE_INT8(instr_num_dsts(where) > 1));
-        });
+        dr_insert_clean_call(
+            drcontext, ilist, where, (void *)propagate_stm_cc_template<IB>, false, 3,
+            OPND_CREATE_INTPTR(instr_get_app_pc(where)),
+            opnd_create_reg(opnd_get_base(instr_get_dst(where, 0))),
+            OPND_CREATE_INT8(instr_num_dsts(where) > 1));
         break;
+
     case OP_stmda:
-        DRREG_RESTORE_APP_VALUE(drcontext, ilist, where, instr_get_dst(where, 0), {
-            dr_insert_clean_call(drcontext, ilist, where, (void *)propagate_stm_cc_template<DA>,
-                                 false, 3, OPND_CREATE_INTPTR(instr_get_app_pc(where)),
-                                 opnd_create_reg(opnd_get_base(instr_get_dst(where, 0))),
-                                 /* writeback */
-                                 OPND_CREATE_INT8(instr_num_dsts(where) > 1));
-        });
+        dr_insert_clean_call(
+            drcontext, ilist, where, (void *)propagate_stm_cc_template<DA>, false, 3,
+            OPND_CREATE_INTPTR(instr_get_app_pc(where)),
+            opnd_create_reg(opnd_get_base(instr_get_dst(where, 0))),
+            OPND_CREATE_INT8(instr_num_dsts(where) > 1));
         break;
 
     case OP_ldr:
@@ -1418,7 +1402,7 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
          */
 
         // some instructions contain optional Rd
-        if (instr_num_dsts(where) > 0) 
+        if (instr_num_dsts(where) > 0)
             propagate_mov_reg_src(drcontext, tag, ilist, where);
 
         break;
@@ -1658,8 +1642,8 @@ propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 static bool
 drsys_iter_cb(drsys_arg_t *arg, void *drcontext)
 /*
-    Set syscall output parameters untainted 
-*/
+ *   Set syscall output parameters untainted 
+ */
 {
     if (!arg->valid)
         return true;
@@ -1669,13 +1653,8 @@ drsys_iter_cb(drsys_arg_t *arg, void *drcontext)
 
     if (TEST(arg->mode, DRSYS_PARAM_OUT))
     {
-        char *buffer = (char *)arg->start_addr;
-        for (size_t i = 0; i < arg->size; ++i)
-        {
-            if (!drtaint_set_app_taint(drcontext,
-                                       (app_pc)buffer + i, 0))
-                DR_ASSERT(false);
-        }
+        app_pc buffer = (app_pc)arg->start_addr;
+        drtaint_set_app_area_taint(drcontext, (app_pc)buffer, arg->size, 0);
     }
 
     return true;
@@ -1684,9 +1663,10 @@ drsys_iter_cb(drsys_arg_t *arg, void *drcontext)
 static bool
 event_pre_syscall(void *drcontext, int sysnum)
 {
-    if (drsys_iterate_memargs(drcontext, drsys_iter_cb, drcontext) !=
-        DRMF_SUCCESS)
-        DR_ASSERT(false);
+    drmf_status_t status = drsys_iterate_memargs(
+        drcontext, drsys_iter_cb, drcontext);
+
+    DR_ASSERT(status == DRMF_SUCCESS);
     return true;
 }
 
@@ -1698,21 +1678,18 @@ event_post_syscall(void *drcontext, int sysnum)
     };
     dr_syscall_get_result_ex(drcontext, &info);
 
-    /* all syscalls untaint rax */
-    drtaint_set_reg_taint(drcontext, DR_REG_R0, (byte)0);
+    // All syscalls untaint rax
+    drtaint_set_reg_taint(drcontext, DR_REG_R0, 0u);
 
+    // We only care about tainting if the syscall succeeded.
     if (!info.succeeded)
-    {
-        /* We only care about tainting if the syscall
-         * succeeded.
-         */
         return;
-    }
 
-    /* clear taint for system calls with an OUT memarg param */
-    if (drsys_iterate_memargs(drcontext, drsys_iter_cb, drcontext) !=
-        DRMF_SUCCESS)
-        DR_ASSERT(false);
+    // Clear taint for system calls with an OUT memarg param
+    drmf_status_t status = drsys_iterate_memargs(
+        drcontext, drsys_iter_cb, drcontext);
+
+    DR_ASSERT(status == DRMF_SUCCESS);
 }
 
 #pragma endregion syscall_handling
