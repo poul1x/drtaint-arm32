@@ -5,29 +5,29 @@
 #include <string.h>
 
 /*
-    This is a test application which checks 
-    that drtaint library works properly. 
-    This application must be launched under 
-    dynamorio with libdrtaint_test.so (see app/drtaint_test.cpp) 
-
-    This application is a table of test functions having a structure:
-
-    function test_XXX
-    {
-        MAKE_TAINTED(mem_region)
-        ... 
-        inline arm assembler instructions 
-        ...
-        IS_TAINTED(mem_region) -> test failed / succeeded
-    }
-    
-    Firstly, we use MAKE_TAINTED macro to let 
-    libdrtaint_test.so taint our data.
-    Then we insert inline arm assembler instructions with 
-    the aim of testing their handlers in drtaint library (see drtaint/drtaint.cpp).
-    Finally we use IS_TAINTED macro to let libdrtaint_test.so show 
-    the data was tracked or not. CLEAR macro allows you to make data untainted
-*/
+ *    This is a test application which checks 
+ *    that drtaint library works properly. 
+ *    This application must be launched under 
+ *    dynamorio with libdrtaint_test.so (see app/drtaint_test.cpp) 
+ *
+ *    This application is a table of test functions having a structure:
+ *
+ *    function test_XXX
+ *    {
+ *        MAKE_TAINTED(mem_region)
+ *        ... 
+ *        inline arm assembler instructions 
+ *        ...
+ *        IS_TAINTED(mem_region) -> test failed / succeeded
+ *    }
+ *    
+ *    Firstly, we use MAKE_TAINTED macro to let 
+ *    libdrtaint_test.so taint our data.
+ *    Then we insert inline arm assembler instructions with 
+ *    the aim of testing their handlers in drtaint library (see drtaint/drtaint.cpp).
+ *    Finally we use IS_TAINTED macro to let libdrtaint_test.so show 
+ *    the data was tracked or not. CLEAR macro allows you to make data untainted
+ */
 
 static Test *
 find_test(const char *name);
@@ -93,6 +93,8 @@ Test g_tests[] = {
     {"arith_2rd_2rs", test_asm_arith_2rd_2rs},
 
     {"pkhXX", test_asm_pkhXX},
+
+    {"cond_exec", test_asm_cond},
 };
 
 const int g_tests_sz = sizeof(g_tests) / sizeof(g_tests[0]);
@@ -440,10 +442,7 @@ bool test_array()
     strcpy(dst1, src1);
     strcpy(dst2, src1);
 
-    bool b = IS_TAINTED(dst1, sizeof(src1));
-    delete dst1;
-
-    TEST_ASSERT(b);
+    TEST_ASSERT(IS_TAINTED(dst1, sizeof(src1)));
     TEST_ASSERT(IS_TAINTED(dst2, sizeof(src1)));
 
     int C[2] = {1, 2};
@@ -467,6 +466,7 @@ bool test_array()
     TEST_ASSERT(!IS_TAINTED(&B[1][1], sizeof(int)));
     TEST_ASSERT(!IS_TAINTED(&B[1][0], sizeof(int)));
 
+    delete dst1;
     TEST_END;
 }
 
@@ -892,44 +892,44 @@ bool test_asm_ldr_reg()
 }
 
 #ifndef MTHUMB
-#   define CHECK_ALL1(com, r0, r1, r2)            \
-       printf("Both tainted:\n");                 \
-       INL_REG(com, r0, r1, r2);                  \
-       TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
-       INL_REG_PRE(com, r0, r1, r2);              \
-       TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
+#define CHECK_ALL1(com, r0, r1, r2)            \
+    printf("Both tainted:\n");                 \
+    INL_REG(com, r0, r1, r2);                  \
+    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int))); \
+    INL_REG_PRE(com, r0, r1, r2);              \
+    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
 
-#   define CHECK_ALL2(com, r0, r1, r2)             \
-       printf("Both untainted:\n");                \
-       INL_REG(com, r0, r1, r2);                   \
-       TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
-       INL_REG_PRE(com, r0, r1, r2);               \
-       TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
+#define CHECK_ALL2(com, r0, r1, r2)             \
+    printf("Both untainted:\n");                \
+    INL_REG(com, r0, r1, r2);                   \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int))); \
+    INL_REG_PRE(com, r0, r1, r2);               \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
 
-#   define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd)            \
-       printf("R1 is tainted:\n");                                 \
-       INL_REG(com, r0, r1, r2);                                   \
-       TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
-       TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd)); \
-       INL_REG_PRE(com, r0, r1, r2);                               \
-       TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
-       TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
+#define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd)            \
+    printf("R1 is tainted:\n");                                 \
+    INL_REG(com, r0, r1, r2);                                   \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd)); \
+    INL_REG_PRE(com, r0, r1, r2);                               \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));                       \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
 #else
-#   define CHECK_ALL1(com, r0, r1, r2) \
-       printf("Both tainted:\n");      \
-       INL_REG(com, r0, r1, r2);       \
-       TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
+#define CHECK_ALL1(com, r0, r1, r2) \
+    printf("Both tainted:\n");      \
+    INL_REG(com, r0, r1, r2);       \
+    TEST_ASSERT(IS_TAINTED(&r0, sizeof(int)))
 
-#   define CHECK_ALL2(com, r0, r1, r2) \
-       printf("Both untainted:\n");    \
-       INL_REG(com, r0, r1, r2);       \
-       TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
+#define CHECK_ALL2(com, r0, r1, r2) \
+    printf("Both untainted:\n");    \
+    INL_REG(com, r0, r1, r2);       \
+    TEST_ASSERT(!IS_TAINTED(&r0, sizeof(int)))
 
-#   define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd) \
-       printf("R1 is tainted:\n");                      \
-       INL_REG(com, r0, r1, r2);                        \
-       TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));            \
-       TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
+#define CHECK_ALL3(com, r0, r1, r2, sz_ttd, sz_nttd) \
+    printf("R1 is tainted:\n");                      \
+    INL_REG(com, r0, r1, r2);                        \
+    TEST_ASSERT(IS_TAINTED(&r0, sz_ttd));            \
+    TEST_ASSERT(IS_NOT_TAINTED((char *)&r0 + sz_ttd, sz_nttd))
 #endif
 
 bool test_asm_ldr_reg_ex()
@@ -947,7 +947,7 @@ bool test_asm_ldr_reg_ex()
     int reg_offs = 7 * sizeof(int);
 
     // ------------------------------ 1
-    MAKE_TAINTED((char*)A + reg_offs, sizeof(int));
+    MAKE_TAINTED((char *)A + reg_offs, sizeof(int));
     MAKE_TAINTED(&reg_offs, sizeof(int));
 
     CHECK_ALL1(ldr, v, pA, reg_offs);
@@ -2413,3 +2413,128 @@ bool test_asm_pkhXX()
 }
 
 #pragma endregion asm_pkhXX
+
+#pragma region conditional
+
+#define INL_COND(com, pred, dst, src1, src2)  \
+    MAKE_TAINTED(&src1, sizeof(int));         \
+    MAKE_TAINTED(&src2, sizeof(int));         \
+    CLEAR(&dst, sizeof(int));                 \
+    printf("Test:\n'" #com " r0, r1, r2'\n"); \
+    printf("'str" #pred " r0, dst'\n");       \
+    asm volatile("ldr r1, %1;"                \
+                 "ldr r2, %2;"                \
+                 "" #com " r0, r1, r2;"       \
+                 "IT " #pred ";"              \
+                 "str" #pred " r0, %0;"       \
+                 : "=m"(dst)                  \
+                 : "m"(src1), "m"(src2)       \
+                 : "r0", "r1", "r2");         \
+    printf("src1 = %d, src2 = %d, dst = %d\n", src1, src2, dst)
+
+#define CHECK_1_TRUE_1_FALSE(com, pred, a1, b1, c1, a2, b2, c2) \
+    INL_COND(subs, pred, c1, a1, b1);                           \
+    TEST_ASSERT(IS_TAINTED(&c1, sizeof(int)));                  \
+    INL_COND(subs, pred, c2, a2, b2);                           \
+    TEST_ASSERT(!IS_TAINTED(&c2, sizeof(int)))
+
+#define CHECK_2_TRUE_0_FALSE(com, pred, a1, b1, c1, a2, b2, c2) \
+    INL_COND(subs, pred, c1, a1, b1);                           \
+    TEST_ASSERT(IS_TAINTED(&c1, sizeof(int)));                  \
+    INL_COND(subs, pred, c2, a2, b2);                           \
+    TEST_ASSERT(IS_TAINTED(&c2, sizeof(int)))
+
+bool test_asm_cond()
+{
+    TEST_START;
+
+    int a1, b1, c1, a2, b2, c2;
+    const int no = -123;
+
+    // eq predicate to c = a-b
+    // first case: taint should spread from a1 and b1 to c1
+    // because predicate eq will be true
+    a1 = b1 = 1;
+    c1 = no;
+    INL_COND(subs, eq, c1, a1, b1);
+    TEST_ASSERT(IS_TAINTED(&c1, sizeof(int)));
+
+    // second case: taint should not spread from a2 and b2 to c2
+    // because predicate eq will be false
+    a2 = 1;
+    b2 = 2;
+    c2 = no;
+    INL_COND(subs, eq, c2, a2, b2);
+    TEST_ASSERT(!IS_TAINTED(&c2, sizeof(int)));
+
+    //////////////////
+    // continue doing the same as above with other predicates
+
+    // not equal.
+    a1 = 1;
+    b1 = 2;
+    c1 = no;
+    a2 = b2 = 2;
+    c2 = no;
+    CHECK_1_TRUE_1_FALSE(subs, ne, a1, b1, c1, a2, b2, c2);
+
+    // signed less than.
+    a1 = -1;
+    b1 = 2;
+    c1 = no;
+    a2 = b2 = 2;
+    c2 = no;
+    CHECK_1_TRUE_1_FALSE(subs, lt, a1, b1, c1, a2, b2, c2);
+
+    // signed greater than.
+    a1 = 2;
+    b1 = -1;
+    c1 = no;
+    a2 = b2 = 2;
+    c2 = no;
+    CHECK_1_TRUE_1_FALSE(subs, gt, a1, b1, c1, a2, b2, c2);
+
+    // signed greater than or equal.
+    a1 = 2;
+    b1 = -1;
+    c1 = no;
+    a2 = b2 = 2;
+    c2 = no;
+    CHECK_2_TRUE_0_FALSE(subs, ge, a1, b1, c1, a2, b2, c2);
+
+    // negative (N == 1)
+    a1 = 1;
+    b1 = 2;
+    c1 = no;
+    a2 = b2 = 2;
+    c2 = no;
+    CHECK_1_TRUE_1_FALSE(subs, mi, a1, b1, c1, a2, b2, c2);
+
+    // positive or zero
+    a1 = 2;
+    b1 = 1;
+    c1 = no;
+    a2 = b2 = 2;
+    c2 = no;
+    CHECK_2_TRUE_0_FALSE(subs, pl, a1, b1, c1, a2, b2, c2);
+
+    // Unsigned higher (C == 1 and Z == 0)
+    a1 = 2;
+    b1 = 1;
+    c1 = no;
+    a2 = b2 = 2;
+    c2 = no;
+    CHECK_1_TRUE_1_FALSE(subs, hi, a1, b1, c1, a2, b2, c2);
+
+    // Unsigned lower or same (C == 0 or Z == 1)
+    a1 = 1;
+    b1 = 2;
+    c1 = no;
+    a2 = b2 = 2;
+    c2 = no;
+    CHECK_2_TRUE_0_FALSE(subs, ls, a1, b1, c1, a2, b2, c2);
+
+    TEST_END;
+}
+
+#pragma endregion conditional

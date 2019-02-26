@@ -9,11 +9,7 @@
 #include "include/drtaint_shadow.h"
 #include "include/drtaint_helper.h"
 
-// TODO: rewrite condition execution handlers
-// TODO: create propagation handlers for bitwise operations
-// TODO: create propagation handlers for instructions left
 // TODO: create slicer sample
-// TODO: comment all, make debug execution
 
 #pragma region prototypes
 
@@ -910,16 +906,9 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
     for (int i = 0; i < num_dsts; ++i)
     {
         bool ok;
-
-        // ? why 1 instead of 0
-        // ? why do we need this
-        if (writeback &&
-            (opnd_get_reg(instr_get_dst(instr, i)) ==
-             opnd_get_reg(instr_get_src(instr, 1))))
-            break;
+        uint res;
 
         // set taint from stack to the appropriate register
-        uint res;
         ok = drtaint_get_app_taint4(drcontext, calculate_addr<c>(instr, base, i, num_dsts), &res);
         DR_ASSERT(ok);
         ok = drtaint_set_reg_taint(drcontext, opnd_get_reg(instr_get_dst(instr, i)), res);
@@ -949,16 +938,9 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
     for (int i = 0; i < num_srcs; ++i)
     {
         bool ok;
-
-        // ? why 1 instead of 0
-        // ? why do we need this
-        if (writeback &&
-            (opnd_get_reg(instr_get_src(instr, i)) ==
-             opnd_get_reg(instr_get_dst(instr, 1))))
-            break;
+        uint res;
 
         // set taint from registers to the stack
-        uint res;
         ok = drtaint_get_reg_taint(drcontext, opnd_get_reg(instr_get_src(instr, i)), &res);
         DR_ASSERT(ok);
         ok = drtaint_set_app_taint4(drcontext, calculate_addr<c>(instr, base, i, num_srcs), res);
@@ -1046,128 +1028,6 @@ untaint_stack(void *drcontext, app_pc sp_val, ptr_int_t imm)
 
 #pragma endregion no_taint
 
-#pragma region taint_flags
-
-static bool
-instr_affects_on_flags(int opcode)
-/*
- *    This routine defines instructions 
- *    somehow affecting on arithmetic flags
- */
-{
-    switch (opcode)
-    {
-    // these four instruction always update flags
-    case OP_cmp:
-    case OP_cmn:
-    case OP_tst:
-    case OP_teq:
-
-    // other instructions must have {S} suffix
-    case OP_adcs:
-    case OP_adds:
-    case OP_ands:
-    case OP_asrs:
-    case OP_bics:
-    case OP_eors:
-    case OP_lsls:
-    case OP_lsrs:
-    case OP_mlas:
-    case OP_mls:
-    case OP_movs:
-    case OP_muls:
-    case OP_mvns:
-    case OP_orns:
-    case OP_orrs:
-    case OP_rors:
-    case OP_rrxs:
-    case OP_rsbs:
-    case OP_rscs:
-    case OP_msr: // writes to cspr directly
-    case OP_sbcs:
-    case OP_subs:
-
-    case OP_smlals:
-    case OP_smmls:
-    case OP_smulls:
-    case OP_umlals:
-    case OP_umulls:
-
-        return true;
-    }
-
-    return false;
-}
-
-static bool
-instr_predicate_is_true(instr_t *where, uint cspr)
-/*
- *    This routine checks the predicate of 
- *    such instructions as move_propagation, bne, blxge ... is true
- */
-{
-    switch (instr_get_predicate(where))
-    {
-    case DR_PRED_EQ:
-        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_Z);
-
-    case DR_PRED_NE:
-        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_Z);
-
-    case DR_PRED_CS:
-        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_C);
-
-    case DR_PRED_CC:
-        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_C);
-
-    case DR_PRED_MI:
-        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_N);
-
-    case DR_PRED_PL:
-        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N);
-
-    case DR_PRED_VS:
-        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_V);
-
-    case DR_PRED_VC:
-        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_V);
-
-    case DR_PRED_HI:
-        return DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_Z) && DRT_TEST_FLAGS_UP(cspr, EFLAGS_C);
-
-    case DR_PRED_LS:
-        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_Z) || DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_C);
-
-    case DR_PRED_GE:
-        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) ||
-               DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N | EFLAGS_V);
-
-    case DR_PRED_LT:
-        return (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N) && DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_V)) ||
-               (DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N) && DRT_TEST_FLAGS_UP(cspr, EFLAGS_V));
-
-    case DR_PRED_GT:
-        return (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N | EFLAGS_V) && DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_Z)) ||
-               DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N | EFLAGS_V | EFLAGS_Z);
-
-    case DR_PRED_LE:
-        return DRT_TEST_FLAGS_UP(cspr, EFLAGS_Z) ||
-               (DRT_TEST_FLAGS_UP(cspr, EFLAGS_N) && DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_V)) ||
-               (DRT_TEST_FLAGS_DOWN(cspr, EFLAGS_N) && DRT_TEST_FLAGS_UP(cspr, EFLAGS_V));
-
-    case DR_PRED_AL:
-        return true;
-
-    // function is called with non - predicated instruction
-    default:
-        DR_ASSERT(false);
-    }
-
-    return false;
-}
-
-#pragma endregion taint_flags
-
 #pragma endregion taint_propagation
 
 #pragma region event_app_handler
@@ -1186,24 +1046,20 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
 
     int opcode = instr_get_opcode(where);
 
-    // get opcode of previsous instruction
-    // if it changes cpsr then update shadow cpsr
-    if (instr_affects_on_flags(ds_get_prev_instr(drcontext)))
-    {
-        uint flags = instr_get_arith_flags(where, DR_QUERY_INCLUDE_ALL);
-        ds_update_cpsr(drcontext, flags);
-    }
-
-    // save current opcode
-    ds_save_instr(drcontext, opcode);
-
     // check if instruction is conditionally executed
     // if predication is false we don't need to continue
     if (instr_is_predicated(where))
     {
-        uint flags = ds_get_cpsr(drcontext);
-        if (!instr_predicate_is_true(where, flags))
-            goto dr_emit_default;
+        dr_pred_trigger_t pred;
+        dr_mcontext_t mcontext = {sizeof(dr_mcontext_t), DR_MC_CONTROL};
+        bool ok;
+
+        ok = dr_get_mcontext(drcontext, &mcontext);
+        DR_ASSERT(ok);
+
+        pred = instr_predicate_triggered(where, &mcontext);
+        if (pred == DR_PRED_TRIGGER_MISMATCH)
+            return DR_EMIT_DEFAULT;
     }
 
     // untaint stack area when allocating a new frame
@@ -1221,12 +1077,9 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
     }
 
     if (propagate_default_isa(drcontext, tag, ilist, where, opcode, user_data))
-        goto dr_emit_default;
+        return DR_EMIT_DEFAULT;
 
-    if (propagate_simd_isa(drcontext, tag, ilist, where, opcode, user_data))
-        goto dr_emit_default;
-
-dr_emit_default:
+    propagate_simd_isa(drcontext, tag, ilist, where, opcode, user_data);
     return DR_EMIT_DEFAULT;
 }
 

@@ -50,13 +50,7 @@ typedef struct _per_thread_t
      * currently uses UMBRA_MAP_SCALE_SAME_1x, which implies that each 1-byte
      * aligned location is represented as one byte. We imitate this here.
      */
-    uint shadow_gprs[DR_NUM_GPR_REGS];
-
-    /* holds shadow flags */
-    uint shadow_cpsr;
-
-    /* holds previous instruction opcode */
-    int prev_opcode;
+    reg_t shadow_gprs[DR_NUM_GPR_REGS];
 
 } per_thread_t;
 
@@ -391,32 +385,4 @@ event_thread_exit(void *drcontext)
 {
     per_thread_t *data = drmgr_get_tls_field(drcontext, tls_index);
     dr_thread_free(drcontext, data, sizeof(per_thread_t));
-}
-
-/* ======================================================================================
- * routines for tracking arith flags (for supporting conditional execution)
- * ==================================================================================== */
-
-void ds_save_instr(void *drcontext, int opcode)
-{
-    per_thread_t *data = drmgr_get_tls_field(drcontext, tls_index);
-    data->prev_opcode = opcode;
-}
-
-int ds_get_prev_instr(void *drcontext)
-{
-    per_thread_t *data = drmgr_get_tls_field(drcontext, tls_index);
-    return data->prev_opcode;
-}
-
-void ds_update_cpsr(void *drcontext, uint new_flags)
-{
-    per_thread_t *data = drmgr_get_tls_field(drcontext, tls_index);
-    data->shadow_cpsr = new_flags;
-}
-
-uint ds_get_cpsr(void *drcontext)
-{
-    per_thread_t *data = drmgr_get_tls_field(drcontext, tls_index);
-    return data->shadow_cpsr;
 }

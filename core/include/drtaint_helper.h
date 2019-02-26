@@ -9,12 +9,6 @@
 #define IS_BIT_UP(word, bit) (((word) & (1 << bit)))
 #define IS_BIT_DOWN(word, bit) (!((word) & (1 << bit)))
 
-#define DRT_SET_FLAGS_UP(cpsr, flags) ((cpsr) |= (flags))
-#define DRT_SET_FLAGS_DOWN(cpsr, flags) ((cpsr) &= ~(flags))
-#define DRT_TEST_FLAGS_UP(cpsr, flags) (((cpsr) & (flags)) >= (flags))
-#define DRT_TEST_FLAGS_DOWN(cpsr, flags) (!((cpsr) & (flags)))
-
-
 #ifdef __cplusplus
 extern "C" {
 #endif

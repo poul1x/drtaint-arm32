@@ -35,9 +35,6 @@ static bool
 event_pre_syscall(void *drcontext, int sysnum);
 
 static void
-set_syscall_retval(void *drcontext, bool ok);
-
-static void
 handle_start_trace(void *drcontext);
 
 static void

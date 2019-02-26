@@ -33,10 +33,10 @@ use_DynamoRIO_extension(drtaint_test "drsyscall")
 
 # by default compile for arm, not thumb
 if (Thumb)
-    set(CMAKE_CXX_FLAGS "-mthumb -DMTHUMB -Wall -Wno-unknown-pragmas -O3")
+    set(CMAKE_CXX_FLAGS "-mthumb -DMTHUMB -Wall -Wno-unknown-pragmas -Wno-array-bounds -O3")
     message(STATUS "drtaint_test_app: configuring thumb ISA")
 else()
-    set(CMAKE_CXX_FLAGS "-marm -Wall -Wno-unknown-pragmas -O3")
+    set(CMAKE_CXX_FLAGS "-marm -Wall -Wno-unknown-pragmas -Wno-array-bounds -O3")
     message(STATUS "drtaint_test_app: configuring arm ISA")
 endif (Thumb)
 

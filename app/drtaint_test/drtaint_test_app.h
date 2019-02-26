@@ -89,3 +89,5 @@ bool test_asm_arith_1rd_3rs();
 bool test_asm_arith_2rd_2rs();
 
 bool test_asm_pkhXX();
+
+bool test_asm_cond();

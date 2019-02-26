@@ -35,15 +35,6 @@ bool ds_set_app_taint4(void *drcontext, app_pc app, uint value);
 
 void ds_set_app_area_taint(void *drcontext, app_pc app, uint size, byte value);
 
-void ds_save_instr(void *drcontext, int opcode);
-
-int ds_get_prev_instr(void *drcontext);
-
-void ds_update_cpsr(void *drcontext, uint new_flags);
-
-uint ds_get_cpsr(void *drcontext);
-
-
 #ifdef __cplusplus
 }
 #endif
