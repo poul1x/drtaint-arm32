@@ -7,6 +7,8 @@
     to place all their handling routines to another file
 */
 
+bool instr_is_simd(instr_t *where);
+
 bool propagate_simd_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                         int opcode, void *user_data)
 {

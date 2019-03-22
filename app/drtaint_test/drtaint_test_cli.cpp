@@ -25,6 +25,9 @@
 #define FD_APP_STOP_TRACE 0xFFFFEEED
 #define FD_APP_IS_TRACED 0xFFFFEEEF
 
+#define FD_APP_START_DISASM 0xFFFFEEBB
+#define FD_APP_STOP_DISASM 0xFFFFEECC
+
 static void
 exit_event(void);
 
@@ -43,17 +46,19 @@ handle_stop_trace(void *drcontext);
 static void
 handle_check_trace(void *drcontext);
 
-/*
+int32_t gb_disasm_on = false;
+
 dr_emit_flags_t event_bb(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                          bool for_trace, bool translating, void *user_data)
 {
     if (!drmgr_is_first_instr(drcontext, inst))
         return DR_EMIT_DEFAULT;
 
-    instrlist_disassemble(drcontext, (app_pc)tag, bb, STDOUT);
+    if (gb_disasm_on)
+        instrlist_disassemble(drcontext, (app_pc)tag, bb, STDERR);
 
     return DR_EMIT_DEFAULT;
-}*/
+}
 
 DR_EXPORT void
 dr_client_main(client_id_t id, int argc, const char *argv[])
@@ -64,8 +69,8 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     dr_register_filter_syscall_event(event_filter_syscall);
     drmgr_register_pre_syscall_event(event_pre_syscall);
 
-    // drmgr_register_bb_instrumentation_event(NULL, event_bb, NULL);
-    // disassemble_set_syntax(DR_DISASM_ARM);
+    drmgr_register_bb_instrumentation_event(NULL, event_bb, NULL);
+    disassemble_set_syntax(DR_DISASM_ARM);
 
     dr_register_exit_event(exit_event);
     dr_printf("\n----- DrTaint test client is running -----\n\n");
@@ -109,6 +114,16 @@ event_pre_syscall(void *drcontext, int sysnum)
 
         case FD_APP_STOP_TRACE:
             handle_stop_trace(drcontext);
+            return false;
+
+        case FD_APP_START_DISASM:
+            gb_disasm_on = true;
+            dr_syscall_set_result(drcontext, DRTAINT_SUCCESS);
+            return false;
+
+        case FD_APP_STOP_DISASM:
+            gb_disasm_on = false;
+            dr_syscall_set_result(drcontext, DRTAINT_SUCCESS);
             return false;
         }
     }

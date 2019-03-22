@@ -439,8 +439,12 @@ bool test_array()
     char dst2[sizeof(src1)];
 
     MAKE_TAINTED(src1, sizeof(src1));
+    
     strcpy(dst1, src1);
+
+    DISASSEMBLE(true);
     strcpy(dst2, src1);
+    DISASSEMBLE(false);
 
     TEST_ASSERT(IS_TAINTED(dst1, sizeof(src1)));
     TEST_ASSERT(IS_TAINTED(dst2, sizeof(src1)));
@@ -2430,7 +2434,7 @@ bool test_asm_pkhXX()
                  : "=m"(dst)                  \
                  : "m"(src1), "m"(src2)       \
                  : "r0", "r1", "r2");         \
-    printf("src1 = %d, src2 = %d, dst = %d\n", src1, src2, dst)
+    printf("r1 = %d, r2 = %d, dst = %d\n", src1, src2, dst)
 
 #define CHECK_1_TRUE_1_FALSE(com, pred, a1, b1, c1, a2, b2, c2) \
     INL_COND(subs, pred, c1, a1, b1);                           \

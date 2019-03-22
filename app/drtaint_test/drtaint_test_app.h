@@ -6,17 +6,31 @@
 #define FD_APP_STOP_TRACE 0xFFFFEEED
 #define FD_APP_IS_TRACED 0xFFFFEEEF
 
+#define FD_APP_START_DISASM 0xFFFFEEBB
+#define FD_APP_STOP_DISASM 0xFFFFEECC
+
+#define MAKE_TAINTED(mem, mem_sz)                        \
+    do                                                   \
+    {                                                    \
+        unsigned status = 0;                             \
+        status = write(FD_APP_START_TRACE, mem, mem_sz); \
+        assert(status == DRTAINT_SUCCESS);               \
+    } while (0)
+
+#define CLEAR(mem, mem_sz)                              \
+    do                                                  \
+    {                                                   \
+        unsigned status = 0;                            \
+        status = write(FD_APP_STOP_TRACE, mem, mem_sz); \
+        assert(status == DRTAINT_SUCCESS);              \
+    } while (0)
+
 #define IS_TAINTED(mem, mem_sz) \
     (write(FD_APP_IS_TRACED, mem, mem_sz) == DRTAINT_SUCCESS)
 
 #define IS_NOT_TAINTED(mem, mem_sz) \
     ((mem_sz) == 0 ? true : !IS_TAINTED(mem, mem_sz))
 
-#define MAKE_TAINTED(mem, mem_sz) \
-    assert(write(FD_APP_START_TRACE, mem, mem_sz) == DRTAINT_SUCCESS)
-
-#define CLEAR(mem, mem_sz) \
-    assert(write(FD_APP_STOP_TRACE, mem, mem_sz) == DRTAINT_SUCCESS)
 
 #define TEST_START bool _status_ = true
 
@@ -30,6 +44,14 @@
     }                               \
     else                            \
         printf("%s: ok\n", #q)
+
+#define DISASSEMBLE(b_on)                                                         \
+    do                                                                            \
+    {                                                                             \
+        unsigned status = 0, tmp = 0;                                             \
+        status = write(b_on ? FD_APP_START_DISASM : FD_APP_STOP_DISASM, &tmp, 0); \
+        assert(status == DRTAINT_SUCCESS);                                        \
+    } while (0)
 
 typedef bool (*testfunc)(void);
 
