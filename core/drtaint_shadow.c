@@ -1,13 +1,13 @@
-#include <string.h>
-#include <signal.h>
-#include <stddef.h>
-
 #include "include/drtaint.h"
-
 #include "dr_api.h"
 #include "drmgr.h"
 #include "umbra.h"
 #include "drreg.h"
+
+#include <string.h>
+#include <signal.h>
+#include <stddef.h>
+
 
 static reg_id_t
 get_faulting_shadow_reg(void *drcontext, dr_mcontext_t *mc);
@@ -51,6 +51,9 @@ typedef struct _per_thread_t
      * aligned location is represented as one byte. We imitate this here.
      */
     reg_t shadow_gprs[DR_NUM_GPR_REGS];
+
+    /* Holds shadow values for SIMD registers. */
+    dr_simd_t shadow_simd[NUM_SIMD_SLOTS];
 
 } per_thread_t;
 

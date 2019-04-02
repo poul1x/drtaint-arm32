@@ -437,7 +437,7 @@ bool test_array()
     char src1[] = "~DrTaint~";
     char *dst1 = new char[sizeof(src1)];
     char dst2[sizeof(src1)];
-
+    
     MAKE_TAINTED(src1, sizeof(src1));
     
     strcpy(dst1, src1);

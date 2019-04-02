@@ -304,7 +304,7 @@ void propagate_ldr(void *drcontext, void *tag, instrlist_t *ilist, instr_t *wher
         }
 
         // save the value of sapp2 to shadow register of reg1
-        instrlist_meta_preinsert_xl8(ilist, where,
+        instrlist_meta_preinsert(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sapp2, [sreg1]
                                                         OPND_CREATE_MEM32(sreg1, 0),
                                                         opnd_create_reg(sapp2)));
@@ -352,7 +352,7 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                                    OPND_CREATE_MEM32(sapp2, 0)));
 
         // save the value of sapp2 to shadow register of reg1
-        instrlist_meta_preinsert_xl8(ilist, where,
+        instrlist_meta_preinsert(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sapp2, [sreg1]
                                                         OPND_CREATE_MEM32(sreg1, 0),
                                                         opnd_create_reg(sapp2)));
@@ -368,7 +368,7 @@ propagate_ldrd(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where)
                                                    OPND_CREATE_MEM32(sapp2n, 0)));
 
         // save the value of sapp2n to shadow register of reg2
-        instrlist_meta_preinsert_xl8(ilist, where,
+        instrlist_meta_preinsert(ilist, where,
                                      XINST_CREATE_store(drcontext, // str sapp2n, [sreg2]
                                                         OPND_CREATE_MEM32(sreg2, 0),
                                                         opnd_create_reg(sapp2n)));
@@ -621,7 +621,7 @@ propagate_1rd_3rs(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where
     drtaint_insert_reg_to_taint(drcontext, ilist, where, reg4, sreg4);
 
     // save the result to shadow register of reg4
-    instrlist_meta_preinsert_xl8(ilist, where,
+    instrlist_meta_preinsert(ilist, where,
                                  XINST_CREATE_store(drcontext, // str sreg1, [sreg4]
                                                     OPND_CREATE_MEM32(sreg4, 0),
                                                     opnd_create_reg(sreg1)));
@@ -790,11 +790,13 @@ propagate_pkhXX(void *drcontext, void *tag, instrlist_t *ilist,
 
     // shift simm left if pkhtb and get 0xFFFF0000 constant
     if (!is_pkhbt)
+    {
         instrlist_meta_preinsert(ilist, where,
                                  INSTR_CREATE_lsl(drcontext,
                                                   opnd_create_reg(simm),
                                                   opnd_create_reg(simm),
                                                   OPND_CREATE_INT32(16)));
+    }
 
     // get value of shadow register of reg1 and place it to sreg1
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg1, sreg1);
@@ -809,17 +811,22 @@ propagate_pkhXX(void *drcontext, void *tag, instrlist_t *ilist,
 
     // shift simm: pkhbt -> left; pkhtb -> right
     if (!is_pkhbt)
+    {
         instrlist_meta_preinsert(ilist, where,
                                  INSTR_CREATE_lsr(drcontext,
                                                   opnd_create_reg(simm),
                                                   opnd_create_reg(simm),
                                                   OPND_CREATE_INT32(16)));
+    }
     else
+    {
         instrlist_meta_preinsert(ilist, where,
                                  INSTR_CREATE_lsl(drcontext,
                                                   opnd_create_reg(simm),
                                                   opnd_create_reg(simm),
                                                   OPND_CREATE_INT32(16)));
+    }
+
     // get bits x:y of sreg2
     instrlist_meta_preinsert(ilist, where,
                              INSTR_CREATE_and(drcontext,
@@ -908,10 +915,13 @@ void propagate_ldm_cc_template(void *pc, void *base, bool writeback)
         bool ok;
         uint res;
 
+        app_pc addr = calculate_addr<c>(instr, base, i, num_dsts);
+        reg_id_t reg = opnd_get_reg(instr_get_dst(instr, i));
+
         // set taint from stack to the appropriate register
-        ok = drtaint_get_app_taint4(drcontext, calculate_addr<c>(instr, base, i, num_dsts), &res);
+        ok = drtaint_get_app_taint4(drcontext, addr, &res);
         DR_ASSERT(ok);
-        ok = drtaint_set_reg_taint(drcontext, opnd_get_reg(instr_get_dst(instr, i)), res);
+        ok = drtaint_set_reg_taint(drcontext, reg, res);
         DR_ASSERT(ok);
     }
 
@@ -924,7 +934,7 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
  *    stm r, { regs }
  *    
  *    When handling a stm command we have to set all memory 
- *    in the stack where the register values will be written tainted
+ *    in the stack, where the register values will be written, tainted
  */
 {
     void *drcontext = dr_get_current_drcontext();
@@ -940,10 +950,13 @@ void propagate_stm_cc_template(void *pc, void *base, bool writeback)
         bool ok;
         uint res;
 
+        reg_id_t reg = opnd_get_reg(instr_get_src(instr, i));
+        app_pc addr = calculate_addr<c>(instr, base, i, num_srcs);
+
         // set taint from registers to the stack
-        ok = drtaint_get_reg_taint(drcontext, opnd_get_reg(instr_get_src(instr, i)), &res);
+        ok = drtaint_get_reg_taint(drcontext, reg, &res);
         DR_ASSERT(ok);
-        ok = drtaint_set_app_taint4(drcontext, calculate_addr<c>(instr, base, i, num_srcs), res);
+        ok = drtaint_set_app_taint4(drcontext, addr, res);
         DR_ASSERT(ok);
     }
     instr_destroy(drcontext, instr);
@@ -976,7 +989,7 @@ propagate_mov_imm_src(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
                                                opnd_create_reg(simm2),
                                                OPND_CREATE_INT32(0)));
 
-    // move_propagation to shadow register of reg2 the value of imm1
+    // move propagation to shadow register of reg2 the value of imm1
     instrlist_meta_preinsert(ilist, where,
                              XINST_CREATE_store(drcontext, // str simm2, [sreg2]
                                                 OPND_CREATE_MEM32(sreg2, 0),
@@ -1045,22 +1058,6 @@ event_app_instruction(void *drcontext, void *tag, instrlist_t *ilist, instr_t *w
         return DR_EMIT_DEFAULT;
 
     int opcode = instr_get_opcode(where);
-
-    // check if instruction is conditionally executed
-    // if predication is false we don't need to continue
-    if (instr_is_predicated(where))
-    {
-        dr_pred_trigger_t pred;
-        dr_mcontext_t mcontext = {sizeof(dr_mcontext_t), DR_MC_CONTROL};
-        bool ok;
-
-        ok = dr_get_mcontext(drcontext, &mcontext);
-        DR_ASSERT(ok);
-
-        pred = instr_predicate_triggered(where, &mcontext);
-        if (pred == DR_PRED_TRIGGER_MISMATCH)
-            return DR_EMIT_DEFAULT;
-    }
 
     // untaint stack area when allocating a new frame
     if (opcode == OP_sub || opcode == OP_subs)

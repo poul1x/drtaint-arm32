@@ -46,7 +46,7 @@ handle_stop_trace(void *drcontext);
 static void
 handle_check_trace(void *drcontext);
 
-int32_t gb_disasm_on = false;
+volatile bool gb_disasm_on = false;
 
 dr_emit_flags_t event_bb(void *drcontext, void *tag, instrlist_t *bb, instr_t *inst,
                          bool for_trace, bool translating, void *user_data)
