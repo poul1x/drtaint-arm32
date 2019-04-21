@@ -4,10 +4,8 @@
 #include "dr_api.h"
 
 #ifdef __cplusplus
-extern "C"
-{
+extern "C" {
 #endif
-
 
 #define DRMGR_PRIORITY_NAME_DRTAINT "drtaint"
 #define DRMGR_PRIORITY_NAME_DRTAINT_EXIT "drtaint.exit"
@@ -29,6 +27,9 @@ bool drtaint_insert_app_to_taint(void *drcontext, instrlist_t *ilist, instr_t *w
 
 bool drtaint_insert_reg_to_taint(void *drcontext, instrlist_t *ilist, instr_t *where,
                                  reg_id_t shadow, reg_id_t regaddr);
+
+bool drtaint_insert_reg_to_taint_load(void *drcontext, instrlist_t *ilist, instr_t *where,
+                                      reg_id_t shadow, reg_id_t regaddr);
 
 bool drtaint_get_reg_taint(void *drcontext, reg_id_t reg, uint *result);
 

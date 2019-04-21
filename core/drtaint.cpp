@@ -2,7 +2,6 @@
 #include "drmgr.h"
 #include "drreg.h"
 #include "drutil.h"
-#include "umbra.h"
 #include "drsyscall.h"
 
 #include "include/drtaint.h"

@@ -19,4 +19,5 @@ find_package(DrMemoryFramework REQUIRED)
 # build projects
 add_subdirectory(app/drtaint_test drtaint_test)
 add_subdirectory(app/drtaint_only drtaint_only)
+add_subdirectory(app/drmarker drmarker)
 
