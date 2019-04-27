@@ -27,6 +27,8 @@ private:
   reg_id_t reg_;
 };
 
+bool instr_is_simd(instr_t *where);
+
 bool is_pre_addr(uint raw_instr_bits);
 
 bool is_post_addr(uint raw_instr_bits);
