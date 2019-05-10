@@ -3,7 +3,7 @@
 This project is an attempt to improve the DrTaint: https://github.com/toshipiazza/drtaint. 
 It's still raw, with some bug fixes and new features added.
 
-### Build
+## Build
 
 1. Download and build DrMemory Framework ([Cross-Compiling for ARM on Linux](https://github.com/DynamoRIO/drmemory/wiki/How-To-Build)). 
 
@@ -28,11 +28,11 @@ cd drt_build
 cmake ../DrTaint -DDynamoRIO_DIR=$DRMF_HOME/dynamorio/cmake -DDrMemoryFramework_DIR=$DRMF_HOME/drmf -DCMAKE_TOOLCHAIN_FILE=toolchain-arm32.cmake
 make -j
 ```
-### Launch
+## Launch
 
 **Note:** *host* = Linux x86 machine (my is Ubuntu 18 x32), *guest* = Linux on ARM board (I've tested on *BeagleBone black* and *qemu*). 
 
-Assume, you have a board and ssh access to your Linux guest. If not, look at this **manual**.
+Assume, you have a board and ssh access to your Linux guest. If not, look at this [manual](/dev/qemu).
 
 On Linux host do:
 
