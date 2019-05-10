@@ -1,53 +1,74 @@
-# Dr. Taint
+# DrTaint
 
 This project is an attempt to improve the DrTaint: https://github.com/toshipiazza/drtaint. 
 It's still raw, with some bug fixes and new features added.
 
-# Build
+### Build
 
-First, build DynamoRIO and DrMemory framework: https://github.com/DynamoRIO/drmemory/wiki/How-To-Build.
+1. Download and build DrMemory Framework ([Cross-Compiling for ARM on Linux](https://github.com/DynamoRIO/drmemory/wiki/How-To-Build)). 
 
-Then find their build directories:
+2. Follow these instructions:
 
-```bash	
+```bash=
+export DRMF_HOME="<path-to-your-drmemory-build-directory>"
 
-export DR_BUILD_DIR=<path-to-your-dynamorio-build-directory>
-export DRMF_BUILD_DIR=<path-to-your-drmemory-build-directory>
+# Find headers and copy them to include folder
+cp `find $DRMF_HOME/../ -name umbra.h` $DRMF_HOME/drmf/include/umbra.h
+cp `find $DRMF_HOME/../ -name drsyscall.h` $DRMF_HOME/drmf/include/drsyscall.h
 
+# Comment some lines in cmake file for successfull build
+sed -i 's/SET_PROPERTY/#SET_PROPERTY/g' $DRMF_HOME/drmf/DRMFTarget32.cmake
 ```
 
-Copy header files:
-
-```bash	
-
-cp $DRMF_BUILD_DIR/../umbra/umbra.h $DRMF_BUILD_DIR/drmf/include/umbra.h
-cp $DRMF_BUILD_DIR/../drsyscall/drsyscall.h $DRMF_BUILD_DIR/drmf/include/drsyscall.h
-
-```
-
-We need *DrMemoryFrameworkConfig.cmake* and  *DynamoRIOConfig.cmake* files to build our project. They might be situated in folders *$DRMF_BUILD_DIR/drmf* and *$DR_BUILD_DIR/cmake*
-
-Use cmake:
-
-```bash	
-
+You need *DrMemoryFrameworkConfig.cmake* and *DynamoRIOConfig.cmake* files to build DrTaint. They must be situated in folders *\$DRMF_HOME/drmf* and  *\$DYNAMORIO_HOME/cmake*.
+```bash=
 git clone https://github.com/Super-pasha/DrTaint.git
-cd DrTaint
-mkdir build
-cd build
-cmake ../ -DDynamoRIO_DIR=$DR_BUILD_DIR/cmake/ -DDrMemoryFramework_DIR=$DRMF_BUILD_DIR/drmf -DCMAKE_TOOLCHAIN_FILE=toolchain-arm32.cmake
-make
+mkdir drt_build
+cd drt_build
+cmake ../DrTaint -DDynamoRIO_DIR=$DRMF_HOME/dynamorio/cmake -DDrMemoryFramework_DIR=$DRMF_HOME/drmf -DCMAKE_TOOLCHAIN_FILE=toolchain-arm32.cmake
+make -j
+```
+### Launch
 
+**Note:** *host* = Linux x86 machine (my is Ubuntu 18 x32), *guest* = Linux on ARM board (I've tested on *BeagleBone black* and *qemu*). 
+
+Assume, you have a board and ssh access to your Linux guest. If not, look at this **manual**.
+
+On Linux host do:
+
+```bash=
+export DRTAINT_HOME="<path-to-drtaint-build-directory>"
+
+# Attributes of your guest ssh server
+export USERNAME="<your-guest-username> (my is debian)"
+export IP="<ip-of-ssh-server> (my is 127.0.0.1)"
+export PORT="<port-of-ssh-server> (my is 10022)"
+
+# Copy drtaint
+scp -P $PORT -rp $DRTAINT_HOME $USERNAME@$IP:~/drt_build
 ```
 
-Optionally you can add *-DDebug=ON* for building in debug mode
+On Linux guest do:
 
-If all was ok, then there are 4 libs with test applications must be created in build/<client-name> folders.
-You can launch them the same way as dynamorio client library:
+```bash=
+# Get prebuilt dynamorio package. I prefer latest
+cd ~/
+wget https://github.com/DynamoRIO/dynamorio/releases/download/release_7.1.0/DynamoRIO-ARM-Linux-EABIHF-7.1.0-1.tar.gz 
+tar xvf DynamoRIO-ARM-Linux-EABIHF-7.1.0-1.tar.gz
 
-```bash
+# Launch self-test
+export BIN32=~/DynamoRIO-ARM-Linux-EABIHF-7.1.0-1/bin32
+$BIN32/drrun -c drt_build/drtaint_test/libdrtaint_test.so -- drt_build/drtaint_test/drtaint_test_app --all
 
-$DR_BUILD_DIR/bin32/drrun -c lib<client-name>.so -- <client-name>_app
-
+# Latest output: 
+# Results: passed - 33, failed - 8
+# Exitting...
 ```
-	
+
+If successfull, you can try other samples:
+
+| Name                              | Description                                                           |
+| :-------------------------------- | :-------------------------------------------------------------------- |
+| [DrTaint only](/app/drtaint_only) | Empty dynamorio client showing program slowdown running under DrTaint |
+| [DrTaint test](/app/drtaint_test) | Developer tool intended to find bugs in DrTaint library               |
+| [DrMarker](/app/drmarker)         | Performs instruction slicing                                          |
