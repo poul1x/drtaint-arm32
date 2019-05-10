@@ -9,7 +9,7 @@ It's still raw, with some bug fixes and new features added.
 
 2. Follow these instructions:
 
-```bash=
+```bash
 export DRMF_HOME="<path-to-your-drmemory-build-directory>"
 
 # Find headers and copy them to include folder
@@ -21,7 +21,7 @@ sed -i 's/SET_PROPERTY/#SET_PROPERTY/g' $DRMF_HOME/drmf/DRMFTarget32.cmake
 ```
 
 You need *DrMemoryFrameworkConfig.cmake* and *DynamoRIOConfig.cmake* files to build DrTaint. They must be situated in folders *\$DRMF_HOME/drmf* and  *\$DYNAMORIO_HOME/cmake*.
-```bash=
+```bash
 git clone https://github.com/Super-pasha/DrTaint.git
 mkdir drt_build
 cd drt_build
@@ -36,7 +36,7 @@ Assume, you have a board and ssh access to your Linux guest. If not, look at thi
 
 On Linux host do:
 
-```bash=
+```bash
 export DRTAINT_HOME="<path-to-drtaint-build-directory>"
 
 # Attributes of your guest ssh server
@@ -50,7 +50,7 @@ scp -P $PORT -rp $DRTAINT_HOME $USERNAME@$IP:~/drt_build
 
 On Linux guest do:
 
-```bash=
+```bash
 # Get prebuilt dynamorio package. I prefer latest
 cd ~/
 wget https://github.com/DynamoRIO/dynamorio/releases/download/release_7.1.0/DynamoRIO-ARM-Linux-EABIHF-7.1.0-1.tar.gz 
@@ -60,7 +60,7 @@ tar xvf DynamoRIO-ARM-Linux-EABIHF-7.1.0-1.tar.gz
 export BIN32=~/DynamoRIO-ARM-Linux-EABIHF-7.1.0-1/bin32
 $BIN32/drrun -c drt_build/drtaint_test/libdrtaint_test.so -- drt_build/drtaint_test/drtaint_test_app --all
 
-# Latest output: 
+# Expected output: 
 # Results: passed - 33, failed - 8
 # Exitting...
 ```
