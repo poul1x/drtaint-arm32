@@ -10,5 +10,5 @@ int main(int argc, char **argv)
     for (int i =0; i<n; i++)
         buf[i] ^= 5;
 
-    printf("Echo: %s\n", buf);
+    printf("\nEcho: %s\n", buf);
 }

@@ -53,7 +53,7 @@ typedef struct _per_thread_t
     reg_t shadow_gprs[DR_NUM_GPR_REGS];
 
     /* Holds shadow values for SIMD registers. */
-    dr_simd_t shadow_simd[NUM_SIMD_SLOTS];
+    //dr_simd_t shadow_simd[NUM_SIMD_SLOTS];
 
 } per_thread_t;
 

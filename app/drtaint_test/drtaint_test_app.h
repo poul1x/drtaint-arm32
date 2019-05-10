@@ -6,9 +6,6 @@
 #define FD_APP_STOP_TRACE 0xFFFFEEED
 #define FD_APP_IS_TRACED 0xFFFFEEEF
 
-#define FD_APP_START_DISASM 0xFFFFEEBB
-#define FD_APP_STOP_DISASM 0xFFFFEECC
-
 #define MAKE_TAINTED(mem, mem_sz)                        \
     do                                                   \
     {                                                    \
@@ -45,13 +42,6 @@
     else                            \
         printf("%s: ok\n", #q)
 
-#define DISASSEMBLE(b_on)                                                         \
-    do                                                                            \
-    {                                                                             \
-        unsigned status = 0, tmp = 0;                                             \
-        status = write(b_on ? FD_APP_START_DISASM : FD_APP_STOP_DISASM, &tmp, 0); \
-        assert(status == DRTAINT_SUCCESS);                                        \
-    } while (0)
 
 typedef bool (*testfunc)(void);
 

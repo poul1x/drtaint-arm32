@@ -441,10 +441,7 @@ bool test_array()
     MAKE_TAINTED(src1, sizeof(src1));
     
     strcpy(dst1, src1);
-
-    DISASSEMBLE(true);
     strcpy(dst2, src1);
-    DISASSEMBLE(false);
 
     TEST_ASSERT(IS_TAINTED(dst1, sizeof(src1)));
     TEST_ASSERT(IS_TAINTED(dst2, sizeof(src1)));
