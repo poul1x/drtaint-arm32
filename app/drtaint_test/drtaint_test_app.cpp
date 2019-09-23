@@ -4,6 +4,8 @@
 #include <stdio.h>
 #include <string.h>
 
+// #TODO: add __FILE__, __LINE__, __FUNCTION__ to TEST_ASSERT
+
 /*
  *    This is a test application which checks 
  *    that drtaint library works properly. 

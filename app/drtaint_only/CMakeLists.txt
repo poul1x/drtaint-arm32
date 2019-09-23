@@ -9,20 +9,10 @@ drtaint_only_cli.cpp
 ../../core/drtaint_helper.cpp
 )
 
-set(CMAKE_C_FLAGS "-mthumb -Wall -Wno-unknown-pragmas")
-set(CMAKE_CXX_FLAGS "-mthumb -Wall -Wno-unknown-pragmas")
+# configuration for client library
+set(CMAKE_C_FLAGS "${CMAKE_FLAGS_CLI}")
+set(CMAKE_CXX_FLAGS "${CMAKE_FLAGS_CLI}")
 
-if (Debug)
-    message(STATUS "libdrtaint_only.so: configuring debug build")
-    set(CMAKE_C_FLAGS "-g ${CMAKE_C_FLAGS}")
-    set(CMAKE_CXX_FLAGS "-g ${CMAKE_CXX_FLAGS}")
-else()
-    message(STATUS "libdrtaint_only.so: configuring release build")
-    set(CMAKE_C_FLAGS "-O3 ${CMAKE_C_FLAGS}")
-    set(CMAKE_CXX_FLAGS "-O3 ${CMAKE_CXX_FLAGS}")
-endif (Debug)
-
-# build client library
 configure_DynamoRIO_client(drtaint_only)
 use_DynamoRIO_extension(drtaint_only "drreg")
 use_DynamoRIO_extension(drtaint_only "drmgr")
