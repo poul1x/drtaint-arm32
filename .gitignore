@@ -1,4 +1,5 @@
 build/*
 .vscode/*
-configure.sh
-transfer.sh
+scripts/*
+qemu/boot/*
+qemu/*.qcow2

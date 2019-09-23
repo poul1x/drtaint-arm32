@@ -46,7 +46,7 @@ struct data_mem
 struct per_thread_t
 {
     /*
-     * Register slots:
+     * Register slots: 
      *      dr[0] - r0 taint info
      *      dr[1] - r1 taint info
      *      ...

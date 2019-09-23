@@ -8,7 +8,7 @@ First, you need to install [qemu](https://www.qemu.org/) to emulate ARM architec
 ```bash
 # Install qemu
 sudo apt-get install qemu-system-arm
-cd drtaint/dev/qemu
+cd drtaint/qemu
 
 # Get the installer files
 wget -O installer-vmlinuz http://http.us.debian.org/debian/dists/stretch/main/installer-armhf/current/images/netboot/vmlinuz
