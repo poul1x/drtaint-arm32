@@ -264,17 +264,17 @@ insert_save_mem_info(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t
     // store address taint:
     // first load taint value to sreg1, then store to per_thread_t
     drtaint_insert_app_to_taint(drcontext, ilist, where, sreg1, sreg2);
-    
+
     MINSERT(ilist, where,
             XINST_CREATE_load(drcontext, /* ldr sreg1, [sreg1, #0] */
                               opnd_create_reg(sreg1),
                               OPND_CREATE_MEM32(sreg1, 0)));
-    
+
     MINSERT(ilist, where,
             XINST_CREATE_store(drcontext, /* str sreg1, [reg_tls, #offs_taint] */
                                OPND_CREATE_MEM32(reg_tls, offs_taint),
                                opnd_create_reg(sreg1)));
-    
+
     // update taint status
     MINSERT(ilist, where,
             INSTR_CREATE_orr(drcontext,
@@ -363,8 +363,12 @@ insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist, instr_t *where,
 static void
 perform_instrumentation(void *drcontext, instrlist_t *ilist, instr_t *where, app_pc pc)
 {
+    dr_pred_type_t pred = instrlist_get_auto_predicate(ilist);
+    instrlist_set_auto_predicate(ilist, DR_PRED_NONE);
+
     auto reg_tls = drreg_reservation{drcontext, ilist, where};
     auto reg_result = drreg_reservation{drcontext, ilist, where};
+    reg_id_t reg_flags = reg_tls;
 
     // read thread local storage field to reg_tls
     drmgr_insert_read_tls_field(drcontext, tls_index, ilist, where, reg_tls);
@@ -376,8 +380,20 @@ perform_instrumentation(void *drcontext, instrlist_t *ilist, instr_t *where, app
     // save info about tainted source operands
     insert_handle_tainted_srcs(drcontext, ilist, where, reg_tls, reg_result);
 
-    dr_insert_clean_call(drcontext, ilist, where, (void *)clean_call_cb, false, 2,
-                         OPND_CREATE_INTPTR(pc), opnd_create_reg(reg_result));
+    instr_t *skip = INSTR_CREATE_label(drcontext);
+    dr_save_arith_flags_to_reg(drcontext, ilist, where, reg_flags);
+    
+    MINSERT(ilist, where,
+            XINST_CREATE_cmp(drcontext, opnd_create_reg(reg_result), OPND_CREATE_INT32(0)));
+    MINSERT(ilist, where,
+            XINST_CREATE_jump_cond(drcontext, DR_PRED_EQ, opnd_create_instr(skip)));
+
+    //dr_insert_clean_call(drcontext, ilist, where, (void *)clean_call_cb, false, 2,
+    //                     OPND_CREATE_INTPTR(pc), opnd_create_reg(reg_result));
+
+    MINSERT(ilist, where, skip);
+    dr_restore_arith_flags_from_reg(drcontext, ilist, where, reg_flags);
+    instrlist_set_auto_predicate(ilist, pred);
 }
 
 #pragma endregion handle_tainted
