@@ -1,5 +1,3 @@
 build/*
-.vscode/*
-scripts/*
 qemu/boot/*
 qemu/*.qcow2
