@@ -3,9 +3,9 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/**",
-                "${workspaceFolder}/../dynamorio-src/**",
-                "${workspaceFolder}/../drmemory-src/**"
+                "${workspaceFolder}/*",
+                "${workspaceFolder}/../dynamorio/*",
+                "${workspaceFolder}../dynamorio/drmemory/*"
             ],
             "defines": [],
             "cStandard": "c11",

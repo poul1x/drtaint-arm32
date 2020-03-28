@@ -1,3 +1,5 @@
 build/*
-qemu/boot/*
-qemu/*.qcow2
+qemu/*
+!qemu/launch_deb.sh
+!qemu/install_deb.sh
+!qemu/README

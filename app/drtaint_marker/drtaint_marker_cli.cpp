@@ -252,7 +252,7 @@ insert_save_mem_info(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t
                 XINST_CREATE_add_2src(drcontext,
                                       opnd_create_reg(sreg1),
                                       opnd_create_reg(sreg1),
-                                      OPND_CREATE_INT8(add)));
+                                      OPND_CREATE_INT(4)));
     }
 
     // store mem address
@@ -314,6 +314,8 @@ insert_null_entry(void *drcontext, instrlist_t *ilist, instr_t *where,
                                opnd_create_reg(reg_scratch)));
 }
 
+int ii = 0;
+
 static void
 insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist, instr_t *where,
                            reg_id_t reg_tls, reg_id_t reg_result)
@@ -332,8 +334,11 @@ insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist, instr_t *where,
             reg_id_t param_reg = opnd_get_reg(opnd);
             if (i == 0 && (opcode >= OP_ldmia && opcode <= OP_ldmib))
             {
-                //insert_save_mem_info(drcontext, ilist, where, OPND_CREATE_MEM32(param_reg, 0),
-                //                     reg_tls, reg_result, opnd_cnt++);
+                if (i++ % 10 == 0)
+                    dr_printf("here");
+
+                insert_save_mem_info(drcontext, ilist, where, OPND_CREATE_MEM32(param_reg, 0),
+                                     reg_tls, reg_result, opnd_cnt++);
             }
             else
             {
@@ -344,14 +349,20 @@ insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist, instr_t *where,
 
         else if (opnd_is_base_disp(opnd))
         {
-            insert_save_mem_info(drcontext, ilist, where, opnd,
-                                 reg_tls, reg_result, opnd_cnt++);
+            //insert_save_mem_info(drcontext, ilist, where, opnd,
+            //                     reg_tls, reg_result, opnd_cnt++);
 
-            if (opcode == OP_ldrd || opcode == OP_ldrexd)
-            {
-                insert_save_mem_info(drcontext, ilist, where, opnd, reg_tls,
-                                     reg_result, opnd_cnt++, 4);
-            }
+
+            //if (opcode == OP_ldrd)
+            //{
+            //    insert_save_mem_info(drcontext, ilist, where, opnd, reg_tls,
+            //                         reg_result, opnd_cnt++, 4);
+            //}
+            //if (opcode == OP_ldrd || opcode == OP_ldrexd)
+            //{
+            //    insert_save_mem_info(drcontext, ilist, where, opnd, reg_tls,
+            //                         reg_result, opnd_cnt++, 4);
+            //}
         }
     }
 
@@ -363,12 +374,12 @@ insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist, instr_t *where,
 static void
 perform_instrumentation(void *drcontext, instrlist_t *ilist, instr_t *where, app_pc pc)
 {
-    dr_pred_type_t pred = instrlist_get_auto_predicate(ilist);
-    instrlist_set_auto_predicate(ilist, DR_PRED_NONE);
+    //dr_pred_type_t pred = instrlist_get_auto_predicate(ilist);
+    //instrlist_set_auto_predicate(ilist, DR_PRED_NONE);
 
     auto reg_tls = drreg_reservation{drcontext, ilist, where};
     auto reg_result = drreg_reservation{drcontext, ilist, where};
-    reg_id_t reg_flags = reg_tls;
+    //reg_id_t reg_flags = reg_tls;
 
     // read thread local storage field to reg_tls
     drmgr_insert_read_tls_field(drcontext, tls_index, ilist, where, reg_tls);
@@ -380,20 +391,20 @@ perform_instrumentation(void *drcontext, instrlist_t *ilist, instr_t *where, app
     // save info about tainted source operands
     insert_handle_tainted_srcs(drcontext, ilist, where, reg_tls, reg_result);
 
-    instr_t *skip = INSTR_CREATE_label(drcontext);
-    dr_save_arith_flags_to_reg(drcontext, ilist, where, reg_flags);
-    
-    MINSERT(ilist, where,
-            XINST_CREATE_cmp(drcontext, opnd_create_reg(reg_result), OPND_CREATE_INT32(0)));
-    MINSERT(ilist, where,
-            XINST_CREATE_jump_cond(drcontext, DR_PRED_EQ, opnd_create_instr(skip)));
+//    instr_t *skip = INSTR_CREATE_label(drcontext);
+//    dr_save_arith_flags_to_reg(drcontext, ilist, where, reg_flags);
+//    
+//    MINSERT(ilist, where,
+//            XINST_CREATE_cmp(drcontext, opnd_create_reg(reg_result), OPND_CREATE_INT32(0)));
+//    MINSERT(ilist, where,
+//            XINST_CREATE_jump_cond(drcontext, DR_PRED_EQ, opnd_create_instr(skip)));
+//
+    dr_insert_clean_call(drcontext, ilist, where, (void *)clean_call_cb, false, 2,
+                         OPND_CREATE_INTPTR(pc), opnd_create_reg(reg_result));
 
-    //dr_insert_clean_call(drcontext, ilist, where, (void *)clean_call_cb, false, 2,
-    //                     OPND_CREATE_INTPTR(pc), opnd_create_reg(reg_result));
-
-    MINSERT(ilist, where, skip);
-    dr_restore_arith_flags_from_reg(drcontext, ilist, where, reg_flags);
-    instrlist_set_auto_predicate(ilist, pred);
+//    MINSERT(ilist, where, skip);
+//    dr_restore_arith_flags_from_reg(drcontext, ilist, where, reg_flags);
+//    instrlist_set_auto_predicate(ilist, pred);
 }
 
 #pragma endregion handle_tainted

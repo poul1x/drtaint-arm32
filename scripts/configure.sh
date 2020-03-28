@@ -17,12 +17,8 @@ else
     optimized=""
 fi
 
-mkdir -p build &&                                   \
-cd build &&                                         \
-rm -f CMakeCache.txt &&                             \
-cmake ../                                           \
-$thumb                                              \
-$optimized                                          \
--DDynamoRIO_DIR=/mnt/c/Programs/NoInstaller/dynamorio/build/cmake                  \
--DDrMemoryFramework_DIR=/mnt/c/Programs/NoInstaller/drmemory/build/drmf                  \
--DCMAKE_TOOLCHAIN_FILE=toolchain-arm32.cmake
+rm -rf build && mkdir build && cd build &&
+    cmake ../ $thumb $optimized \
+        -DDynamoRIO_DIR=../dynamorio/cmake \
+        -DDrMemoryFramework_DIR=../dynamorio/drmemory/drmf \
+        -DCMAKE_TOOLCHAIN_FILE=toolchain-arm32.cmake
