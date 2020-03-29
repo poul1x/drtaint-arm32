@@ -44,24 +44,24 @@ void instr_decoded::destroy()
     }
 }
 
-bool is_offs_addr(uint raw_instr_bits)
+bool ldr_is_offs_addr(uint raw_instr_bits)
 {
     return IS_BIT_UP(raw_instr_bits, 24) &&
            IS_BIT_DOWN(raw_instr_bits, 21);
 }
 
-bool is_pre_addr(uint raw_instr_bits)
+bool ldr_is_pre_addr(uint raw_instr_bits)
 {
     return IS_BIT_UP(raw_instr_bits, 24) &&
            IS_BIT_UP(raw_instr_bits, 21);
 }
 
-bool is_pre_or_offs_addr(uint raw_instr_bits)
+bool ldr_is_pre_or_offs_addr(uint raw_instr_bits)
 {
     return IS_BIT_UP(raw_instr_bits, 24);
 }
 
-bool is_post_addr(uint raw_instr_bits)
+bool ldr_is_post_addr(uint raw_instr_bits)
 {
     return IS_BIT_DOWN(raw_instr_bits, 24);
 }

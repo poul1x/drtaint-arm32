@@ -7,8 +7,8 @@
     to place all their handling routines to another file
 */
 
-bool propagate_simd_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
-                        int opcode, void *user_data)
+bool propagate_simd_isa(void *drcontext, instrlist_t *ilist, instr_t *where,
+                        void *user_data)
 {
     unimplemented_opcode(where);
     return false;
