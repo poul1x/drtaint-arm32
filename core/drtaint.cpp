@@ -8,8 +8,6 @@
 #include "include/drtaint_shadow.h"
 #include "include/drtaint_helper.h"
 
-// TODO: create slicer sample
-
 #pragma region prototypes
 
 static dr_emit_flags_t
@@ -1087,6 +1085,9 @@ static bool
 propagate_default_isa(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
                       int opcode, void *user_data)
 {
+    if (instr_is_meta(where))
+        return DR_EMIT_DEFAULT;
+
     if (instr_handle_constant_func(drcontext, tag, ilist, where))
         return true;
 

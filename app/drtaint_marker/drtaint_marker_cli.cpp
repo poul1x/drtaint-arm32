@@ -29,42 +29,51 @@ static int tls_index;
 #define OPND_REG 0x10
 #define OPND_MEM 0x20
 
-/*
- * Taint data:
- *  - for registers value is register number 
- *  - for memory area value contains address
- */
-struct opnd_data_t
-{
-    uint32_t type;
-    uint32_t value; // register name | memory address
-    uint32_t taint; // taint value
-};
+using u32 = unsigned int;
+using u8 = unsigned char;
 
-/*
- * We will store there buffer
- * that will be saved in pre_syscall event
- */
 struct buffer_t
 {
     char *ptr;
     int len;
 };
 
+enum class opnd_type
+{
+    unknown,
+    reg,
+    addr,
+};
+
+struct opnd_taint_info_t
+{
+    opnd_type type = opnd_type::unknown;
+    union {
+        reg_id_t reg_num;
+        u32 address;
+    };
+
+    u32 value = 0;
+    u32 taint = 0;
+};
+
+struct instr_taint_info_t
+{
+    u32 hit_count = 0;
+    std::vector<opnd_taint_info_t> operands;
+};
+
+using taint_info_t = std::map<app_pc, instr_taint_info_t>;
+
 struct per_thread_t
 {
     /*
-     * Register slots:
-     *      od[0] - first seen register argument taint info
-     *      od[1] - second seen register argument taint info
-     *      ...
-     *      od[n] - null terminator
-     */
-    opnd_data_t od[DR_NUM_GPR_REGS + 1];
-
+    * We will store there buffer
+    * that will be saved in pre_syscall event
+    */
     buffer_t syscall_buf;
 
-    std::map<app_pc, std::vector<opnd_data_t>> *tainted_instrs;
+    taint_info_t *tainted_instrs;
 };
 
 #pragma endregion structs
@@ -87,39 +96,8 @@ event_post_syscall(void *drcontext, int sysnum);
  * Function passed to dr_insert_clean_call routine
  * when handling tainted instructions
  */
-static void
-clean_call_cb(app_pc pc, void *);
-
-/** 
- * Inserts instructions to save taint info about reg_param register
- * Stores taint value to reg_scratch register
- */
-static void
-insert_save_reg_info(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg_param,
-                     reg_id_t reg_tls, reg_id_t reg_result, int idx);
-
-/** 
- * Inserts instructions to write null entries to od (data memory) entry
- */
-static void
-insert_null_entry(void *drcontext, instrlist_t *ilist, instr_t *where,
-                  reg_id_t reg_tls, reg_id_t reg_scratch, int idx);
-
-/** 
- * Inserts instructions to save taint info about memory region mem
- * Additionally reserves two registers for use
- */
-static void
-insert_save_mem_info(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t mem,
-                     reg_id_t reg_tls, reg_id_t reg_result, int idx, uint8_t add = 0);
-
-/** 
- * Inserts instructions to save taint info about all instruction source operands
- * Additionally reserves one register for use
- */
-static void
-insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist, instr_t *where,
-                           reg_id_t reg_tls, reg_id_t reg_result);
+//static void
+//clean_call_cb(app_pc pc, void *);
 
 static void
 perform_instrumentation(void *drcontext, instrlist_t *ilist, instr_t *where, app_pc pc);
@@ -133,38 +111,45 @@ event_thread_init(void *drcontext);
 static void
 event_thread_exit(void *drcontext);
 
+static void
+dump_tainted_instrs(void *drcontext, const taint_info_t &tmap);
+
 #pragma endregion func_prototypes
 
 #pragma region clean_call
 
-static std::vector<opnd_data_t>
-get_taint_info(per_thread_t *tls)
+static void
+get_taint_info(void *drcontext, app_pc pc, taint_info_t *info)
 {
-    // tainted memory
-    std::vector<opnd_data_t> outvec(4);
-    for (uint i = 0; i < sizeof(tls->od) / sizeof(tls->od[0]) && tls->od[i].type != OPND_NONE; i++)
-    {
-        opnd_data_t od = tls->od[i];
-        if (od.taint != 0)
-            outvec.push_back(od);
-    }
+    auto instr = instr_decoded(drcontext, pc);
+    auto it = info->find(pc);
 
-    return outvec;
+    if (it != info->end())
+        it->second.hit_count++;
+    else
+    {
+        instr_taint_info_t instr_info;
+        info->emplace(pc, instr_info);
+    }
 }
 
 static void
-clean_call_cb(app_pc pc, void *res)
+clean_call_cb(app_pc pc, unsigned x)
 {
-    if (res == 0)
-        return;
+    //if (res == 0) 
+    //    return;
 
     void *drcontext = dr_get_current_drcontext();
-    per_thread_t *tls = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
+    auto instr = instr_decoded{drcontext, pc};
 
-    if (tls->tainted_instrs->find(pc) != tls->tainted_instrs->end())
-        return;
+    DR_ASSERT(x > 0 && x < 10);
 
-    tls->tainted_instrs->emplace(pc, get_taint_info(tls));
+    //instr_disassemble(drcontext,instr, STDOUT);
+    //dr_printf("\nClean call x = %d\n", x);
+
+    //void *drcontext = dr_get_current_drcontext();
+    //per_thread_t *tls = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
+    //get_taint_info(drcontext, pc, tls->tainted_instrs);
 }
 
 #pragma endregion clean_call
@@ -172,158 +157,81 @@ clean_call_cb(app_pc pc, void *res)
 #pragma region handle_tainted
 
 static void
-insert_save_reg_info(void *drcontext, instrlist_t *ilist, instr_t *where, reg_id_t reg_param,
-                     reg_id_t reg_tls, reg_id_t reg_result, int idx)
+insert_check_reg_tainted(void *drcontext, instrlist_t *ilist, instr_t *where,
+                         reg_id_t reg_param, reg_id_t reg_taint)
 {
     DR_ASSERT(reg_param - DR_REG_R0 < DR_NUM_GPR_REGS);
-    uint32_t offs_type = offsetof(per_thread_t, od[idx].type);
-    uint32_t offs_value = offsetof(per_thread_t, od[idx].value);
-    uint32_t offs_taint = offsetof(per_thread_t, od[idx].taint);
-
     auto reg_scratch = drreg_reservation{drcontext, ilist, where};
 
-    // store opnd type
-    MINSERT(ilist, where,
-            XINST_CREATE_move(drcontext, /* mov reg_scratch, #OPND_REG */
-                              opnd_create_reg(reg_scratch),
-                              OPND_CREATE_INT32(OPND_REG)));
-
-    MINSERT(ilist, where,
-            XINST_CREATE_store(drcontext, /* str reg_scratch, [reg_tls, #offs_type] */
-                               OPND_CREATE_MEM32(reg_tls, offs_type),
-                               opnd_create_reg(reg_scratch)));
-
-    // store register number
-    MINSERT(ilist, where,
-            XINST_CREATE_move(drcontext, /* mov reg_scratch, #OPND_REG */
-                              opnd_create_reg(reg_scratch),
-                              OPND_CREATE_INT32(reg_param - DR_REG_R0)));
-
-    MINSERT(ilist, where,
-            XINST_CREATE_store(drcontext, /* str reg_param, [reg_tls, #offs_value] */
-                               OPND_CREATE_MEM32(reg_tls, offs_value),
-                               opnd_create_reg(reg_scratch)));
-
-    // store register taint value
+    // store register taint value to reg_scratch
     drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg_param, reg_scratch);
-
-    MINSERT(ilist, where,
-            XINST_CREATE_store(drcontext, /* str reg_scratch, [reg_tls, #offs_taint] */
-                               OPND_CREATE_MEM32(reg_tls, offs_taint),
-                               opnd_create_reg(reg_scratch)));
 
     // update taint status
     MINSERT(ilist, where,
             INSTR_CREATE_orr(drcontext,
-                             opnd_create_reg(reg_result),
-                             opnd_create_reg(reg_result),
+                             opnd_create_reg(reg_taint),
+                             opnd_create_reg(reg_taint),
                              opnd_create_reg(reg_scratch)));
 }
 
 static void
-insert_save_mem_info(void *drcontext, instrlist_t *ilist, instr_t *where, opnd_t mem,
-                     reg_id_t reg_tls, reg_id_t reg_result, int idx, uint8_t add)
-{
-    DR_ASSERT(idx < DR_NUM_GPR_REGS);
-    uint32_t offs_type = offsetof(per_thread_t, od[idx].type);
-    uint32_t offs_value = offsetof(per_thread_t, od[idx].value);
-    uint32_t offs_taint = offsetof(per_thread_t, od[idx].taint);
+insert_check_mem_tainted(void *drcontext, instrlist_t *ilist, instr_t *where,
+                         opnd_t mem, reg_id_t reg_taint, byte offset)
 
+{
     auto sreg1 = drreg_reservation{drcontext, ilist, where};
     auto sreg2 = drreg_reservation{drcontext, ilist, where};
-
-    // store opnd type
-    MINSERT(ilist, where,
-            XINST_CREATE_move(drcontext, /* mov sreg1, OPND_MEM */
-                              opnd_create_reg(sreg1),
-                              OPND_CREATE_INT32(OPND_MEM)));
-    MINSERT(ilist, where,
-            XINST_CREATE_store(drcontext, /* str sreg1, [reg_tls, #offs_type] */
-                               OPND_CREATE_MEM32(reg_tls, offs_type),
-                               opnd_create_reg(sreg1)));
 
     // get the memory address at mem and store the result to sreg1 register
     drutil_insert_get_mem_addr(drcontext, ilist, where, mem, sreg1, sreg2);
 
     // if need, add an offset
-    if (add != 0)
+    if (offset != 0)
     {
         MINSERT(ilist, where,
                 XINST_CREATE_add_2src(drcontext,
                                       opnd_create_reg(sreg1),
                                       opnd_create_reg(sreg1),
-                                      OPND_CREATE_INT(4)));
+                                      OPND_CREATE_INT(offset)));
     }
 
-    // store mem address
-    MINSERT(ilist, where,
-            XINST_CREATE_store(drcontext, /* str sreg1, [reg_tls, #offs_value] */
-                               OPND_CREATE_MEM32(reg_tls, offs_value),
-                               opnd_create_reg(sreg1)));
-
-    // store address taint:
-    // first load taint value to sreg1, then store to per_thread_t
+    // Convert sreg1 address to it's taint address
     drtaint_insert_app_to_taint(drcontext, ilist, where, sreg1, sreg2);
+    sreg2.unreserve();
 
-    MINSERT(ilist, where,
-            XINST_CREATE_load(drcontext, /* ldr sreg1, [sreg1, #0] */
-                              opnd_create_reg(sreg1),
-                              OPND_CREATE_MEM32(sreg1, 0)));
+    instr_disassemble(drcontext, where, STDOUT);
+    dr_printf("sz = %d\n", opnd_size_in_bytes(opnd_get_size(mem)));
 
-    MINSERT(ilist, where,
-            XINST_CREATE_store(drcontext, /* str sreg1, [reg_tls, #offs_taint] */
-                               OPND_CREATE_MEM32(reg_tls, offs_taint),
-                               opnd_create_reg(sreg1)));
+    int opcode = instr_get_opcode(where);
 
-    // update taint status
-    MINSERT(ilist, where,
-            INSTR_CREATE_orr(drcontext,
-                             opnd_create_reg(reg_result),
-                             opnd_create_reg(reg_result),
-                             opnd_create_reg(sreg1)));
+    if (opcode == OP_ldrb)
+    {
+
+        // ldrXX sreg1, [sreg1, #0]
+        opnd_size_t opsz = opnd_get_size(mem);
+        opnd_t opnd_mem_taint = opnd_create_base_disp(sreg1, DR_REG_NULL, 0, 0, opsz);
+
+        MINSERT(ilist, where,
+                instr_create_1dst_1src(drcontext, opcode,
+                    opnd_create_reg(sreg1), opnd_mem_taint));
+    }
+
+    //// update taint status
+    //MINSERT(ilist, where,
+    //        INSTR_CREATE_orr(drcontext,
+    //                         opnd_create_reg(reg_taint),
+    //                         opnd_create_reg(reg_taint),
+    //                         opnd_create_reg(sreg1)));
 }
-
-static void
-insert_null_entry(void *drcontext, instrlist_t *ilist, instr_t *where,
-                  reg_id_t reg_tls, reg_id_t reg_scratch, int idx)
-{
-    DR_ASSERT(idx < DR_NUM_GPR_REGS);
-
-    uint32_t offs_type = offsetof(per_thread_t, od[idx].type);
-    uint32_t offs_value = offsetof(per_thread_t, od[idx].value);
-    uint32_t offs_taint = offsetof(per_thread_t, od[idx].taint);
-
-    MINSERT(ilist, where,
-            XINST_CREATE_move(drcontext, /* mov scratch_reg, #0 */
-                              opnd_create_reg(reg_scratch),
-                              OPND_CREATE_INT(0)));
-
-    MINSERT(ilist, where,
-            XINST_CREATE_store(drcontext, /* str scratch_reg, [reg_tls, #offs_type] */
-                               OPND_CREATE_MEM32(reg_tls, offs_type),
-                               opnd_create_reg(reg_scratch)));
-
-    MINSERT(ilist, where,
-            XINST_CREATE_store(drcontext, /* str scratch_reg, [reg_tls, #offs_value] */
-                               OPND_CREATE_MEM32(reg_tls, offs_value),
-                               opnd_create_reg(reg_scratch)));
-
-    MINSERT(ilist, where,
-            XINST_CREATE_store(drcontext, /* str scratch_reg, [reg_tls, #offs_taint] */
-                               OPND_CREATE_MEM32(reg_tls, offs_taint),
-                               opnd_create_reg(reg_scratch)));
-}
-
-int ii = 0;
 
 static void
 insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist, instr_t *where,
-                           reg_id_t reg_tls, reg_id_t reg_result)
+                           reg_id_t reg_taint)
 {
     int opcode = instr_get_opcode(where);
     int n = instr_num_srcs(where);
-    int opnd_cnt = 0;
-    if (n == 0)
+
+    if (opcode >= OP_ldmia && opcode <= OP_ldmib)
         return;
 
     for (int i = 0; i < n; i++)
@@ -332,79 +240,74 @@ insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist, instr_t *where,
         if (opnd_is_reg(opnd))
         {
             reg_id_t param_reg = opnd_get_reg(opnd);
-            if (i == 0 && (opcode >= OP_ldmia && opcode <= OP_ldmib))
-            {
-                if (i++ % 10 == 0)
-                    dr_printf("here");
 
-                insert_save_mem_info(drcontext, ilist, where, OPND_CREATE_MEM32(param_reg, 0),
-                                     reg_tls, reg_result, opnd_cnt++);
-            }
-            else
-            {
-                insert_save_reg_info(drcontext, ilist, where, param_reg,
-                                     reg_tls, reg_result, opnd_cnt++);
-            }
+            insert_check_reg_tainted(drcontext, ilist, where,
+                                     param_reg, reg_taint);
         }
 
         else if (opnd_is_base_disp(opnd))
         {
-            //insert_save_mem_info(drcontext, ilist, where, opnd,
-            //                     reg_tls, reg_result, opnd_cnt++);
+            //insert_check_mem_tainted(drcontext, ilist, where, opnd, reg_taint, 0);
 
-
-            //if (opcode == OP_ldrd)
-            //{
-            //    insert_save_mem_info(drcontext, ilist, where, opnd, reg_tls,
-            //                         reg_result, opnd_cnt++, 4);
-            //}
-            //if (opcode == OP_ldrd || opcode == OP_ldrexd)
-            //{
-            //    insert_save_mem_info(drcontext, ilist, where, opnd, reg_tls,
-            //                         reg_result, opnd_cnt++, 4);
-            //}
+            if (opcode == OP_ldrd || opcode == OP_ldrexd)
+            {
+                //insert_check_mem_tainted(drcontext, ilist, where,
+                //                         opnd, reg_taint, 4);
+            }
         }
     }
-
-    // set null terminator
-    auto sreg = drreg_reservation{drcontext, ilist, where};
-    insert_null_entry(drcontext, ilist, where, reg_tls, sreg, opnd_cnt);
 }
 
 static void
 perform_instrumentation(void *drcontext, instrlist_t *ilist, instr_t *where, app_pc pc)
 {
+    auto reg_result = drreg_reservation{drcontext, ilist, where};
+    auto reg_flags = drreg_reservation{drcontext, ilist, where};
+
+    dr_pred_type_t pred = instrlist_get_auto_predicate(ilist);
+    instrlist_set_auto_predicate(ilist, DR_PRED_NONE);
+
+    // place constant
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_move(drcontext, // mov simm2, 0
+                                               opnd_create_reg(reg_result),
+                                               OPND_CREATE_INT(0)));
+
+    instrlist_set_auto_predicate(ilist, pred);
+
+
+    unsigned x = dr_get_random_value(10);
+    DR_ASSERT(x >= 0 && x < 10);
+    //dr_printf("Generated x = %d\n", x);
+
+    instrlist_meta_preinsert(ilist, where,
+                             XINST_CREATE_move(drcontext, // mov simm2, 0
+                                               opnd_create_reg(reg_result),
+                                               OPND_CREATE_INT(x)));
+
+    //insert_handle_tainted_srcs(drcontext, ilist, where, reg_result);
+
+    pred = instrlist_get_auto_predicate(ilist);
+    instrlist_set_auto_predicate(ilist, DR_PRED_NONE);
+
+    instr_t *skip = INSTR_CREATE_label(drcontext);
     //dr_pred_type_t pred = instrlist_get_auto_predicate(ilist);
     //instrlist_set_auto_predicate(ilist, DR_PRED_NONE);
 
-    auto reg_tls = drreg_reservation{drcontext, ilist, where};
-    auto reg_result = drreg_reservation{drcontext, ilist, where};
-    //reg_id_t reg_flags = reg_tls;
+    dr_save_arith_flags_to_reg(drcontext, ilist, where, reg_flags);
+    
+    MINSERT(ilist, where,
+            XINST_CREATE_cmp(drcontext, opnd_create_reg(reg_result), OPND_CREATE_INT32(0)));
+    MINSERT(ilist, where,
+            XINST_CREATE_jump_cond(drcontext, DR_PRED_EQ, opnd_create_instr(skip)));
+    
 
-    // read thread local storage field to reg_tls
-    drmgr_insert_read_tls_field(drcontext, tls_index, ilist, where, reg_tls);
-
-    // denote that there's no tainted opnds
-    // additionally assign 0 to reg_result
-    insert_null_entry(drcontext, ilist, where, reg_tls, reg_result, 0);
-
-    // save info about tainted source operands
-    insert_handle_tainted_srcs(drcontext, ilist, where, reg_tls, reg_result);
-
-//    instr_t *skip = INSTR_CREATE_label(drcontext);
-//    dr_save_arith_flags_to_reg(drcontext, ilist, where, reg_flags);
-//    
-//    MINSERT(ilist, where,
-//            XINST_CREATE_cmp(drcontext, opnd_create_reg(reg_result), OPND_CREATE_INT32(0)));
-//    MINSERT(ilist, where,
-//            XINST_CREATE_jump_cond(drcontext, DR_PRED_EQ, opnd_create_instr(skip)));
-//
     dr_insert_clean_call(drcontext, ilist, where, (void *)clean_call_cb, false, 2,
                          OPND_CREATE_INTPTR(pc), opnd_create_reg(reg_result));
 
-//    MINSERT(ilist, where, skip);
-//    dr_restore_arith_flags_from_reg(drcontext, ilist, where, reg_flags);
-//    instrlist_set_auto_predicate(ilist, pred);
+    MINSERT(ilist, where, skip);
+    dr_restore_arith_flags_from_reg(drcontext, ilist, where, reg_flags);
+    instrlist_set_auto_predicate(ilist, pred);
 }
 
 #pragma endregion handle_tainted
@@ -454,26 +357,16 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     ok = drtaint_init(id);
     DR_ASSERT(ok);
 
-    // init after drtaint
-    drmgr_priority_t init_pri = {
-        sizeof(init_pri), "drmarker.init", NULL, DRMGR_PRIORITY_NAME_DRTAINT_INIT,
-        DRMGR_PRIORITY_THREAD_INIT_DRTAINT};
-
-    // exit before drtaint
-    drmgr_priority_t exit_pri = {
-        sizeof(exit_pri), "drmarker.exit", DRMGR_PRIORITY_NAME_DRTAINT_EXIT, NULL,
-        DRMGR_PRIORITY_THREAD_EXIT_DRTAINT};
-
-    // we want to add our instrumentation after drtaint's one
+    // We want to add our instrumentation before drtaint's one
     drmgr_priority_t instru_pri = {
-        sizeof(instru_pri), "drmarker.pc", NULL, DRMGR_PRIORITY_NAME_DRTAINT,
-        DRMGR_PRIORITY_INSERT_DRTAINT};
+        sizeof(instru_pri), "drmarker.pc", NULL, NULL,
+        DRMGR_PRIORITY_INSERT_DRTAINT + 1};
 
     ok = drmgr_init();
     DR_ASSERT(ok);
 
-    ok = drmgr_register_thread_init_event_ex(event_thread_init, &init_pri) &&
-         drmgr_register_thread_exit_event_ex(event_thread_exit, &exit_pri) &&
+    ok = drmgr_register_thread_init_event(event_thread_init) &&
+         drmgr_register_thread_exit_event(event_thread_exit) &&
          drmgr_register_bb_instrumentation_event(NULL, event_bb, &instru_pri);
     DR_ASSERT(ok);
 
@@ -510,10 +403,10 @@ exit_event(void)
     drmgr_unregister_thread_exit_event(event_thread_exit);
     drmgr_unregister_pre_syscall_event(event_pre_syscall);
     drmgr_unregister_post_syscall_event(event_post_syscall);
-    drmgr_exit();
 
-    drtaint_exit();
     drreg_exit();
+    drmgr_exit();
+    drtaint_exit();
 
     dr_printf("\n----- drtaint marker is exitting -----\n\n");
 }
@@ -523,19 +416,28 @@ event_thread_init(void *drcontext)
 {
     per_thread_t *data = (per_thread_t *)dr_thread_alloc(drcontext, sizeof(per_thread_t));
     memset(data, 0, sizeof(per_thread_t));
-    data->tainted_instrs = new std::map<app_pc, std::vector<opnd_data_t>>();
+
+    data->tainted_instrs = new taint_info_t();
     drmgr_set_tls_field(drcontext, tls_index, data);
 }
 
 static void
-dump_tainted_instrs(void *drcontext, std::map<app_pc, std::vector<opnd_data_t>> *tmap)
+event_thread_exit(void *drcontext)
 {
-    for (const auto &elem : *tmap)
+    per_thread_t *data = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
+    dump_tainted_instrs(drcontext, *data->tainted_instrs);
+
+    delete data->tainted_instrs;
+    dr_thread_free(drcontext, data, sizeof(per_thread_t));
+}
+
+static void
+dump_tainted_instrs(void *drcontext, const taint_info_t &tmap)
+{
+    for (const auto &elem : tmap)
     {
         app_pc pc = elem.first;
-
-        instr_t *instr = instr_create(drcontext);
-        decode(drcontext, (byte *)pc, instr);
+        auto instr = instr_decoded(drcontext, pc);
 
         dr_printf("0x%08X:  ", pc);
         int length = instr_length(drcontext, instr);
@@ -555,18 +457,8 @@ dump_tainted_instrs(void *drcontext, std::map<app_pc, std::vector<opnd_data_t>> 
         }
 
         instr_disassemble(drcontext, instr, STDOUT);
-        instr_destroy(drcontext, instr);
         dr_printf("\n");
     }
-}
-
-static void
-event_thread_exit(void *drcontext)
-{
-    per_thread_t *data = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
-    dump_tainted_instrs(drcontext, data->tainted_instrs);
-    delete data->tainted_instrs;
-    dr_thread_free(drcontext, data, sizeof(per_thread_t));
 }
 
 #pragma endregion main_and_events
@@ -617,8 +509,8 @@ event_pre_syscall(void *drcontext, int sysnum)
             tls->syscall_buf.ptr = (char *)dr_syscall_get_param(drcontext, 1);
             tls->syscall_buf.len = (int)dr_syscall_get_param(drcontext, 2);
 
-            printf("pre syscall buf %08X\n", tls->syscall_buf.ptr);
-            printf("pre syscall len %08X\n", tls->syscall_buf.len);
+            printf("pre syscall buf %08X\n", (unsigned)tls->syscall_buf.ptr);
+            printf("pre syscall len %08X\n", (unsigned)tls->syscall_buf.len);
         }
     }
 
@@ -634,8 +526,8 @@ event_post_syscall(void *drcontext, int sysnum)
 
         if (tls->syscall_buf.ptr != NULL)
         {
-            dr_printf("post syscall buf %08X\n", tls->syscall_buf.ptr);
-            dr_printf("post syscall len %08X\n", tls->syscall_buf.len);
+            dr_printf("post syscall buf %08X\n", (unsigned)tls->syscall_buf.ptr);
+            dr_printf("post syscall len %08X\n", (unsigned)tls->syscall_buf.len);
             drtaint_set_app_area_taint(drcontext, (app_pc)tls->syscall_buf.ptr,
                                        tls->syscall_buf.len, TAG_TAINTED);
 

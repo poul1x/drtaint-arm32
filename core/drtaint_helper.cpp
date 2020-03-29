@@ -1,18 +1,47 @@
 #include "include/drtaint_helper.h"
 #include "drmgr.h"
 
-drreg_reservation::
-    drreg_reservation(void* drcontext, instrlist_t *ilist, instr_t *where)
-    : drcontext_(drcontext), ilist_(ilist), where_(where)
+drreg_reservation::drreg_reservation(void *drcontext, instrlist_t *ilist, instr_t *where)
+    : drcontext(drcontext), ilist(ilist), where(where)
 {
-    bool status = drreg_reserve_register(drcontext_, ilist_, where_, NULL, &reg_);
+    bool status = drreg_reserve_register(drcontext, ilist, where, NULL, &reg);
     DR_ASSERT(status == DRREG_SUCCESS);
 }
 
-drreg_reservation::
-    ~drreg_reservation()
+void drreg_reservation::unreserve()
 {
-    drreg_unreserve_register(drcontext_, ilist_, where_, reg_);
+    if (reg != DR_REG_NULL)
+    {
+        bool status = drreg_unreserve_register(drcontext, ilist, where, reg);
+        DR_ASSERT(status == DRREG_SUCCESS);
+        reg = DR_REG_NULL;
+    }
+}
+
+drreg_reservation::~drreg_reservation()
+{
+    this->unreserve();
+}
+
+instr_decoded::instr_decoded(void* drcontext, app_pc pc)
+    : drcontext(drcontext)
+{
+    instr = instr_create(drcontext);
+    decode(drcontext, (byte *)pc, instr);
+}
+
+instr_decoded::~instr_decoded()
+{
+    this->destroy();
+}
+    
+void instr_decoded::destroy()
+{
+    if (instr != nullptr)
+    {
+        instr_destroy(drcontext, instr);
+        instr = nullptr;
+    }
 }
 
 bool is_offs_addr(uint raw_instr_bits)
