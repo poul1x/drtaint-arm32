@@ -7,7 +7,7 @@
 #include "include/drtaint.h"
 #include "include/drtaint_shadow.h"
 #include "include/drtaint_helper.h"
-#include "include/templates.h"
+#include "include/template_utils.h"
 #include "include/instr_groups.h"
 
 #pragma region prototypes

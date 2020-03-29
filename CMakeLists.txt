@@ -1,8 +1,7 @@
 cmake_minimum_required (VERSION 3.0)
 project (drtaint)
 
-# cmake ../ -DDynamoRIO_DIR=/home/user/Downloads/dynamorio/build/cmake/ -DDrMemoryFramework_DIR=/home/user/Downloads/drmemory/build/drmf/ -DCMAKE_TOOLCHAIN_FILE=toolchain-arm32.cmake
-# cmake ../ -DDynamoRIO_DIR=/home/debian/Downloads/dynamorio/build/cmake/ -DDrMemoryFramework_DIR=/home/debian/Downloads/drmemory/build/drmf/ -DDebug=ON
+set(CMAKE_CXX_STANDARD 17)
 
 if (NOT DEFINED DynamoRIO_DIR)
   message(FATAL_ERROR "Need to specify directory DynamoRIO_DIR containing DynamoRIOConfig.cmake")

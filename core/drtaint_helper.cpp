@@ -44,6 +44,27 @@ void instr_decoded::destroy()
     }
 }
 
+disabled_autopredication::disabled_autopredication(instrlist_t* ilist)
+    : ilist(ilist)
+{
+    pred = instrlist_get_auto_predicate(ilist);
+    instrlist_set_auto_predicate(ilist, DR_PRED_NONE);
+}
+
+disabled_autopredication::~disabled_autopredication()
+{
+    this->restore();
+}
+    
+void disabled_autopredication::restore()
+{
+    if (pred != DR_PRED_NONE)
+    {
+        instrlist_set_auto_predicate(ilist, pred);
+        pred = DR_PRED_NONE;
+    }
+}
+
 bool ldr_is_offs_addr(uint raw_instr_bits)
 {
     return IS_BIT_UP(raw_instr_bits, 24) &&

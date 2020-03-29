@@ -43,6 +43,20 @@ public:
     void destroy();
 };
 
+class disabled_autopredication
+{
+private:
+    dr_pred_type_t pred = DR_PRED_NONE;
+    instrlist_t* ilist = nullptr;
+
+public:
+    disabled_autopredication(instrlist_t* ilist);
+
+    ~disabled_autopredication();
+    
+    void restore();
+};
+
 bool instr_is_simd(instr_t *where);
 
 bool ldr_is_pre_addr(uint raw_instr_bits);
