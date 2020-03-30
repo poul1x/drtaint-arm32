@@ -3,6 +3,7 @@ project (drtaint_marker)
 
 add_library(drtaint_marker SHARED
 drtaint_marker_cli.cpp
+taint_processing.cpp
 ../../core/drtaint.cpp
 ../../core/drtaint_simd.cpp
 ../../core/drtaint_shadow.c

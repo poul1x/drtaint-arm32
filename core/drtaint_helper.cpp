@@ -1,4 +1,4 @@
-#include "include/drtaint_helper.h"
+#include "drtaint_helper.h"
 #include "drmgr.h"
 
 drreg_reservation::drreg_reservation(void *drcontext, instrlist_t *ilist, instr_t *where)
@@ -18,23 +18,47 @@ void drreg_reservation::unreserve()
     }
 }
 
+drreg_reservation::drreg_reservation(drreg_reservation &&other)
+{
+    this->drcontext = other.drcontext;
+    this->ilist = other.ilist;
+    this->where = other.where;
+    this->reg = other.reg;
+    other.reg = DR_REG_NULL;
+}
+
 drreg_reservation::~drreg_reservation()
 {
     this->unreserve();
 }
 
-instr_decoded::instr_decoded(void* drcontext, app_pc pc)
+instr_decoded::instr_decoded(void *drcontext, app_pc pc)
     : drcontext(drcontext)
 {
     instr = instr_create(drcontext);
     decode(drcontext, (byte *)pc, instr);
 }
 
+instr_decoded::instr_decoded(const instr_decoded &other)
+{
+    this->drcontext = other.drcontext;
+    this->instr = instr_clone(other.drcontext, other.instr);
+}
+
+instr_decoded::instr_decoded(instr_decoded &&other)
+{
+    this->drcontext = other.drcontext;
+    this->instr = other.instr;
+
+    other.drcontext = nullptr;
+    other.instr = nullptr;
+}
+
 instr_decoded::~instr_decoded()
 {
     this->destroy();
 }
-    
+
 void instr_decoded::destroy()
 {
     if (instr != nullptr)
@@ -44,7 +68,7 @@ void instr_decoded::destroy()
     }
 }
 
-disabled_autopredication::disabled_autopredication(instrlist_t* ilist)
+disabled_autopredication::disabled_autopredication(instrlist_t *ilist)
     : ilist(ilist)
 {
     pred = instrlist_get_auto_predicate(ilist);
@@ -55,7 +79,7 @@ disabled_autopredication::~disabled_autopredication()
 {
     this->restore();
 }
-    
+
 void disabled_autopredication::restore()
 {
     if (pred != DR_PRED_NONE)
@@ -63,6 +87,13 @@ void disabled_autopredication::restore()
         instrlist_set_auto_predicate(ilist, pred);
         pred = DR_PRED_NONE;
     }
+}
+
+disabled_autopredication::disabled_autopredication(disabled_autopredication &&other)
+{
+    this->pred = other.pred;
+    this->ilist = other.ilist;
+    other.pred = DR_PRED_NONE;
 }
 
 bool ldr_is_offs_addr(uint raw_instr_bits)

@@ -4,11 +4,11 @@
 #include "drutil.h"
 #include "drsyscall.h"
 
-#include "include/drtaint.h"
-#include "include/drtaint_shadow.h"
-#include "include/drtaint_helper.h"
-#include "include/template_utils.h"
-#include "include/instr_groups.h"
+#include "drtaint.h"
+#include "drtaint_shadow.h"
+#include "drtaint_helper.h"
+#include "drtaint_template_utils.h"
+#include "drtaint_instr_groups.h"
 
 #pragma region prototypes
 

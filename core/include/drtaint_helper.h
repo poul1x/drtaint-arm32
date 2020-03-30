@@ -22,6 +22,10 @@ public:
 
     ~drreg_reservation();
 
+    drreg_reservation(const drreg_reservation &) = delete;
+
+    drreg_reservation(drreg_reservation &&);
+
     operator reg_id_t() const { return reg; }
 
     void unreserve();
@@ -31,14 +35,18 @@ class instr_decoded
 {
 private:
     void *drcontext = nullptr;
-    instr_t* instr = nullptr;
+    instr_t *instr = nullptr;
 
 public:
-    instr_decoded(void* drcontext, app_pc pc);
+    instr_decoded(void *drcontext, app_pc pc);
 
     ~instr_decoded();
-    
-    operator instr_t*() const { return instr; }
+
+    instr_decoded(const instr_decoded &);
+
+    instr_decoded(instr_decoded &&);
+
+    operator instr_t *() const { return instr; }
 
     void destroy();
 };
@@ -47,13 +55,17 @@ class disabled_autopredication
 {
 private:
     dr_pred_type_t pred = DR_PRED_NONE;
-    instrlist_t* ilist = nullptr;
+    instrlist_t *ilist = nullptr;
 
 public:
-    disabled_autopredication(instrlist_t* ilist);
+    disabled_autopredication(instrlist_t *ilist);
 
     ~disabled_autopredication();
-    
+
+    disabled_autopredication(const disabled_autopredication &) = delete;
+
+    disabled_autopredication(disabled_autopredication &&);
+
     void restore();
 };
 

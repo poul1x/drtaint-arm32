@@ -3,13 +3,13 @@
 #include "drreg.h"
 #include "drutil.h"
 
-#include "../../core/include/drtaint.h"
-#include "../../core/include/drtaint_shadow.h"
-#include "../../core/include/drtaint_helper.h"
-#include "../../core/include/template_utils.h"
-#include "../../core/include/instr_groups.h"
+#include "drtaint.h"
+#include "drtaint_shadow.h"
+#include "drtaint_helper.h"
+#include "drtaint_template_utils.h"
+#include "drtaint_instr_groups.h"
 
-#include "tainted_opnd.h"
+#include "taint_processing.h"
 
 #include <syscall.h>
 #include <string.h>
@@ -18,6 +18,8 @@
 
 #include <map>
 #include <vector>
+
+#include <byteswap.h>
 
 #define IS_TAINTED(val, tag) ((val) & (tag))
 #define TAG_TAINTED 0x02
@@ -38,13 +40,7 @@ struct buffer_t
     int len;
 };
 
-struct instr_taint_info_t
-{
-    unsigned hit_count = 0;
-    std::vector<tainted_opnd_t> operands;
-};
-
-using taint_info_t = std::map<app_pc, instr_taint_info_t>;
+using taint_info_t = std::map<app_pc, tainted_instr>;
 
 struct per_thread_t
 {
@@ -90,20 +86,6 @@ dump_tainted_instrs(void *drcontext, const taint_info_t &tmap);
 
 #pragma region clean_call
 
-static std::vector<tainted_opnd_t>
-save_tainted_opnds_ldm(void *drcontext, instr_t *instr)
-{
-    // Not implemented
-    return std::vector<tainted_opnd_t>{};
-}
-
-static std::vector<tainted_opnd_t>
-save_tainted_opnds(void *drcontext, instr_t *instr)
-{
-    // Not implemented
-    return std::vector<tainted_opnd_t>{};
-}
-
 static void
 save_taint_info(void *drcontext, app_pc pc, taint_info_t *info)
 {
@@ -114,14 +96,11 @@ save_taint_info(void *drcontext, app_pc pc, taint_info_t *info)
         it->second.hit_count++;
     else
     {
-        instr_taint_info_t instr_info;
+        tainted_instr instr_info;
         instr_info.hit_count = 1;
 
-        if (instr_group_is_ldm(instr_get_opcode(instr)))
-            instr_info.operands = save_tainted_opnds_ldm(drcontext, instr);
-        else
-            instr_info.operands = save_tainted_opnds(drcontext, instr);
-
+        tainted_instr_save_bytes(drcontext, instr, &instr_info);
+        tainted_instr_save_tainted_opnds(drcontext, instr, &instr_info);
         info->emplace(pc, instr_info);
     }
 }
@@ -133,12 +112,24 @@ clean_call_cb(app_pc pc)
     auto instr = instr_decoded{drcontext, pc};
     DR_ASSERT((instr_t *)instr != NULL);
 
-    instr_disassemble(drcontext, instr, STDOUT);
-    dr_printf("\n");
+    dr_printf("%08lx\t", pc);
 
-    //void *drcontext = dr_get_current_drcontext();
-    //per_thread_t *tls = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
-    //get_taint_info(drcontext, pc, tls->tainted_instrs);
+    int length = instr_length(drcontext, instr);
+
+    if (length == 2)
+    {
+        dr_printf("%04hX\n", bswap_16(*(uint16_t *)instr_get_raw_bits(instr)));
+    }
+    else
+    {
+        dr_printf("%08lX\n", bswap_32(*(uint32_t *)instr_get_raw_bits(instr)));
+    }
+
+    //instr_disassemble(drcontext, instr, STDOUT);
+    //dr_printf("\n");
+
+    per_thread_t *tls = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
+    save_taint_info(drcontext, pc, tls->tainted_instrs);
 }
 
 #pragma endregion clean_call
@@ -263,7 +254,11 @@ insert_check_mem_ldr_tainted(void *drcontext, instrlist_t *ilist,
         insert_save_app_taint_to_reg<WORD>(drcontext, ilist, where, mem, reg_taint);
 
     else
+    {
+        instr_disassemble(drcontext, where, STDOUT);
+        dr_printf("\n");
         DR_ASSERT(false);
+    }
 
     MINSERT(ilist, where,
             INSTR_CREATE_orr(drcontext,
@@ -294,12 +289,29 @@ insert_check_mem_tainted(void *drcontext, instrlist_t *ilist, instr_t *where,
         insert_check_mem_ldr_tainted(drcontext, ilist, where, reg_result);
 }
 
+static bool
+instr_reg_in_dsts(instr_t *where)
+{
+    int n = instr_num_dsts(where);
+    for (int i = 0; i < n; i++)
+    {
+        opnd_t opnd = instr_get_dst(where, i);
+        if (opnd_is_reg(opnd))
+            return true;
+    }
+
+    return false;
+}
+
 static void
 insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist,
                            instr_t *where, reg_id_t reg_result)
 {
     if (instr_reads_memory(where))
     {
+        if (!instr_reg_in_dsts(where))
+            return;
+
         insert_check_mem_tainted(drcontext, ilist, where, reg_result);
         return;
     }
@@ -484,39 +496,41 @@ static void
 event_thread_exit(void *drcontext)
 {
     per_thread_t *data = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
-    //dump_tainted_instrs(drcontext, *data->tainted_instrs);
+    dump_tainted_instrs(drcontext, *(data->tainted_instrs));
 
     delete data->tainted_instrs;
     dr_thread_free(drcontext, data, sizeof(per_thread_t));
 }
 
 static void
-dump_tainted_instrs(void *drcontext, const taint_info_t &tmap)
+dump_tainted_instrs(void *drcontext, const taint_info_t &info_map)
 {
-    for (const auto &elem : tmap)
+    dr_printf("\n\n---------------------------------\n");
+    for (const auto &elem : info_map)
     {
-        app_pc pc = elem.first;
-        auto instr = instr_decoded(drcontext, pc);
+        app_pc address = elem.first;
+        auto tainted_instr = elem.second;
+        //auto instr = tainted_instr_decode(drcontext, tainted_instr);
 
-        dr_printf("0x%08X:  ", pc);
+        auto instr = instr_decoded(drcontext, address);
+
+        //auto str = tainted_instr_bytes_str(tainted_instr);
+        //dr_printf("%08lx\t%s\n", address, str.c_str());
+
+        dr_printf("%08lx\t", address);
         int length = instr_length(drcontext, instr);
+
         if (length == 2)
         {
-            dr_printf("\\x%02X\\x%02X          ",
-                      instr_get_raw_byte(instr, 0),
-                      instr_get_raw_byte(instr, 1));
+            dr_printf("%04hX\n", *(uint16_t*)instr_get_raw_bits(instr));
         }
         else
         {
-            dr_printf("\\x%02X\\x%02X\\x%02X\\x%02X  ",
-                      instr_get_raw_byte(instr, 0),
-                      instr_get_raw_byte(instr, 1),
-                      instr_get_raw_byte(instr, 2),
-                      instr_get_raw_byte(instr, 3));
+            dr_printf("%08lX\n", *(uint32_t*)instr_get_raw_bits(instr));
         }
 
-        instr_disassemble(drcontext, instr, STDOUT);
-        dr_printf("\n");
+        //instr_disassemble(drcontext, instr, STDOUT);
+        //dr_printf("\n");
     }
 }
 
@@ -597,28 +611,3 @@ event_post_syscall(void *drcontext, int sysnum)
 }
 
 #pragma endregion syscalls
-
-/*
-dr_pred_type_t pred = instrlist_get_auto_predicate(ilist);
-    instrlist_set_auto_predicate(ilist, DR_PRED_NONE);
-
-    auto reg1 = drreg_reservation(drcontext, ilist, where);
-    auto reg2 = drreg_reservation(drcontext, ilist, where);
-    instr_t* skip =  INSTR_CREATE_label(drcontext);
-
-    dr_save_arith_flags_to_reg(drcontext, ilist, where, reg2);
-
-    MINSERT(ilist, where,
-            XINST_CREATE_move(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT32(1)));
-    MINSERT(ilist, where,
-            XINST_CREATE_cmp(drcontext, opnd_create_reg(reg1), OPND_CREATE_INT32(0)));
-    MINSERT(ilist, where,
-
-            XINST_CREATE_jump_cond(drcontext, DR_PRED_EQ, opnd_create_instr(skip)));
-    
-    dr_insert_clean_call(drcontext, ilist, where, (void*)callee, false, 1, opnd_create_reg(reg1));
-
-    MINSERT(ilist, where, skip);
-    dr_restore_arith_flags_from_reg(drcontext, ilist, where, reg2);
-    instrlist_set_auto_predicate(ilist, pred);
-*/
