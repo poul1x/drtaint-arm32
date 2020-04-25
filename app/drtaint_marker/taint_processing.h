@@ -44,7 +44,6 @@ struct tainted_instr
 {
 	u_integer bytes;
 	byte* pc;
-	uint32_t hit_count;
 	std::vector<tainted_opnd> operands;
 };
 

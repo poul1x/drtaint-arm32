@@ -12,7 +12,7 @@ It's still raw, with some bug fixes and new features added.
 sudo apt-get install gcc-arm-linux-gnueabihf binutils-arm-linux-gnueabihf g++-arm-linux-gnueabihf
 
 # Get prebuilt DynamoRIO package
-wget -O dynamorio.tar.gz https://github.com/DynamoRIO/dynamorio/releases/download/release_7.1.0/DynamoRIO-ARM-Linux-EABIHF-7.1.0-1.tar.gz
+wget -O dynamorio.tar.gz https://github.com/DynamoRIO/dynamorio/releases/download/cronbuild-7.91.18319/DynamoRIO-ARM-Linux-EABIHF-7.91.18319.tar.gz
 mkdir dynamorio && tar xvf dynamorio.tar.gz -C dynamorio --strip-components 1
 
 # Download and build drtaint
@@ -48,7 +48,7 @@ On Linux guest do:
 ```bash
 # Get prebuilt DynamoRIO package
 cd ~/
-wget -O dynamorio.tar.gz https://github.com/DynamoRIO/dynamorio/releases/download/release_7.1.0/DynamoRIO-ARM-Linux-EABIHF-7.1.0-1.tar.gz
+wget -O dynamorio.tar.gz https://github.com/DynamoRIO/dynamorio/releases/download/cronbuild-7.91.18319/DynamoRIO-ARM-Linux-EABIHF-7.91.18319.tar.gz
 mkdir dynamorio && tar xvf dynamorio.tar.gz -C dynamorio --strip-components 1
 
 # Setup env
