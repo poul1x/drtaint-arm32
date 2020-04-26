@@ -15,25 +15,22 @@
         {
             "label": "Configure arm optimized",
             "type": "shell",
-            "command": "./scripts/configure.sh arm opt",
-            
+            "command": "./scripts/configure.sh arm opt"
         },
         {
             "label": "Configure thumb optimized",
             "type": "shell",
-            "command": "./scripts/configure.sh thumb opt",
-            
+            "command": "./scripts/configure.sh thumb opt"
         },
         {
             "label": "Configure arm",
             "type": "shell",
             "command": "./scripts/configure.sh arm no-opt",
-            
         },
         {
             "label": "Configure thumb",
             "type": "shell",
-            "command": "./scripts/configure.sh thumb no-opt",
-        },
+            "command": "./scripts/configure.sh thumb no-opt"
+        }
     ]
 }

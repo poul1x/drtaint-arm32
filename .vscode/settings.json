@@ -12,6 +12,7 @@
         "array": "cpp",
         "string_view": "cpp",
         "dr_defines.h": "c",
-        "list": "cpp"
+        "list": "cpp",
+        "cstring": "cpp"
     }
 }

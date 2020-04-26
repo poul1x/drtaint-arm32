@@ -1,38 +1,21 @@
+#include "drtaint.h"
 #include "dr_api.h"
 #include "drmgr.h"
 #include "drreg.h"
-#include "drutil.h"
 
-#include "drtaint.h"
-#include "drtaint_shadow.h"
-#include "drtaint_helper.h"
-#include "drtaint_template_utils.h"
-#include "drtaint_instr_groups.h"
-
+#include "taint_checking.h"
 #include "taint_processing.h"
 
-#include <syscall.h>
-#include <string.h>
-#include <stdint.h>
-#include <stddef.h>
-
-#include <map>
+#include <set>
 #include <vector>
 
-#include <byteswap.h>
+#include <ios>
+#include <sstream>
+#include <cstring>
+#include <syscall.h>
 
 #define IS_TAINTED(val, tag) ((val) & (tag))
 #define TAG_TAINTED 0x02
-
-#define MINSERT instrlist_meta_preinsert
-#define MINSERT_xl8 instrlist_meta_preinsert_xl8
-
-static int tls_index;
-
-// must be 1-byte
-#define OPND_NONE 0x00
-#define OPND_REG 0x10
-#define OPND_MEM 0x20
 
 struct buffer_t
 {
@@ -40,7 +23,7 @@ struct buffer_t
     int len;
 };
 
-using taint_info_t = std::map<app_pc, tainted_instr>;
+static int tls_index;
 
 struct per_thread_t
 {
@@ -50,7 +33,13 @@ struct per_thread_t
     */
     buffer_t syscall_buf;
 
-    taint_info_t *tainted_instrs;
+    /*
+    * We will store there addresses of tainted instructions
+    */
+    std::set<app_pc> *instrs;
+
+    file_t fd_modules;
+    file_t fd_instrs;
 };
 
 #pragma region prototypes
@@ -68,320 +57,122 @@ static void
 event_post_syscall(void *drcontext, int sysnum);
 
 static void
-perform_instrumentation(void *drcontext, instrlist_t *ilist, instr_t *where);
-
-static void
-exit_event(void);
-
-static void
 event_thread_init(void *drcontext);
 
 static void
 event_thread_exit(void *drcontext);
 
 static void
-dump_tainted_instrs(void *drcontext, const taint_info_t &tmap);
+dump_tainted_instrs(void *drcontext, file_t file,
+                    const tainted_instr &instr, bool is_first_instr);
+
+static void
+save_taint_info(void *drcontext, instr_t *instr);
 
 #pragma endregion prototypes
 
-#pragma region clean_call
+class JsonObject
+{
+
+private:
+    std::stringstream m_ss;
+    char m_close_token;
+    bool m_is_first;
+
+public:
+    JsonObject(std::string key, char open_token, char close_token, bool comma = false)
+    {
+        m_is_first = true;
+        m_close_token = close_token;
+
+        if (comma)
+            m_ss << ",";
+
+        m_ss << "\"" << key << "\":" << open_token;
+    }
+
+    JsonObject(char open_token, char close_token, bool comma = false)
+    {
+        m_is_first = true;
+        m_close_token = close_token;
+
+        if (comma)
+            m_ss << ",";
+
+        m_ss << open_token;
+    }
+
+    std::string dump() const
+    {
+        return m_ss.str() + m_close_token;
+    }
+
+    void append(const JsonObject &obj)
+    {
+        if (m_is_first)
+            m_is_first = false;
+        else
+            m_ss << ",";
+
+        m_ss << obj.dump();
+    }
+
+    void append(std::string key, std::string val)
+    {
+        if (m_is_first)
+            m_is_first = false;
+        else
+            m_ss << ",";
+
+        m_ss << "\"" << key << "\":"
+             << "\"" << val << "\"";
+    }
+};
 
 static void
-save_taint_info(void *drcontext, app_pc pc, taint_info_t *info)
+dump_tainted_instrs(void *drcontext, file_t file,
+                    const tainted_instr &instr, bool is_first_instr)
 {
-    auto instr = instr_decoded(drcontext, pc);
-    auto it = info->find(pc);
+    JsonObject dict_instr('{', '}', is_first_instr);
+    dict_instr.append("address", tainted_instr_addr_str(instr));
+    dict_instr.append("bytes", tainted_instr_bytes_str(instr));
 
-    if (it != info->end())
-        it->second.hit_count++;
-    else
+    JsonObject list_opnds("operands", '[', ']');
+    for (const auto &opnd : instr.operands)
+    {
+        JsonObject dict_opnd('{', '}');
+        dict_opnd.append("type", tainted_opnd_type_str(opnd));
+        dict_opnd.append("name", tainted_opnd_name_str(opnd));
+        dict_opnd.append("value", tainted_opnd_value_str(opnd));
+        dict_opnd.append("taint", tainted_opnd_taint_str(opnd));
+
+        list_opnds.append(dict_opnd);
+    }
+
+    dict_instr.append(list_opnds);
+    std::string json = dict_instr.dump();
+    dr_write_file(file, json.c_str(), json.length());
+}
+
+static void
+save_taint_info(void *drcontext, instr_t *instr)
+{
+    per_thread_t *tls = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
+    app_pc pc = instr_get_app_pc(instr);
+    auto instrs = tls->instrs;
+
+    auto it = instrs->find(pc);
+    if (it == instrs->end())
     {
         tainted_instr instr_info;
-        instr_info.hit_count = 1;
-
-        tainted_instr_save_bytes(drcontext, instr, &instr_info);
+        tainted_instr_save_bytes_addr(drcontext, instr, &instr_info);
         tainted_instr_save_tainted_opnds(drcontext, instr, &instr_info);
-        info->emplace(pc, instr_info);
+        dump_tainted_instrs(drcontext, tls->fd_instrs,
+                            instr_info, instrs->size() > 0);
+
+        instrs->emplace(pc);
     }
 }
-
-static void
-clean_call_cb(app_pc pc)
-{
-    void *drcontext = dr_get_current_drcontext();
-    auto instr = instr_decoded{drcontext, pc};
-    DR_ASSERT((instr_t *)instr != NULL);
-
-    dr_printf("%08lx\t", pc);
-
-    int length = instr_length(drcontext, instr);
-
-    if (length == 2)
-    {
-        dr_printf("%04hX\n", bswap_16(*(uint16_t *)instr_get_raw_bits(instr)));
-    }
-    else
-    {
-        dr_printf("%08lX\n", bswap_32(*(uint32_t *)instr_get_raw_bits(instr)));
-    }
-
-    //instr_disassemble(drcontext, instr, STDOUT);
-    //dr_printf("\n");
-
-    per_thread_t *tls = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
-    save_taint_info(drcontext, pc, tls->tainted_instrs);
-}
-
-#pragma endregion clean_call
-
-#pragma region handle_tainted
-
-static void
-insert_check_reg_tainted(void *drcontext, instrlist_t *ilist, instr_t *where,
-                         reg_id_t reg_param, reg_id_t reg_taint)
-{
-    DR_ASSERT(reg_param - DR_REG_R0 < DR_NUM_GPR_REGS);
-    auto reg_scratch = drreg_reservation{drcontext, ilist, where};
-
-    // store register taint value to reg_scratch
-    drtaint_insert_reg_to_taint_load(drcontext, ilist, where, reg_param, reg_scratch);
-
-    // update taint status
-    MINSERT(ilist, where,
-            INSTR_CREATE_orr(drcontext,
-                             opnd_create_reg(reg_taint),
-                             opnd_create_reg(reg_taint),
-                             opnd_create_reg(reg_scratch)));
-}
-
-template <opnd_sz_t sz>
-void insert_save_app_taint_to_reg(void *drcontext, instrlist_t *ilist, instr_t *where,
-                                  opnd_t mem, reg_id_t reg_result)
-
-{
-    auto sreg = drreg_reservation{drcontext, ilist, where};
-
-    // save taint adress of mem to reg_result
-    drutil_insert_get_mem_addr(drcontext, ilist, where, mem, reg_result, sreg);
-    drtaint_insert_app_to_taint(drcontext, ilist, where, reg_result, sreg);
-
-    // load memory taint value to reg_result
-    MINSERT(ilist, where,
-            instr_load<sz>(drcontext, // ldrXX sapp2, [sapp2]
-                           opnd_create_reg(reg_result),
-                           opnd_mem<sz>(reg_result, 0)));
-}
-
-static void
-insert_check_mem_ldrd_tainted(void *drcontext, instrlist_t *ilist,
-                              instr_t *where, reg_id_t reg_result)
-
-{
-    opnd_t mem = instr_get_src(where, 0);
-    if (!opnd_is_base_disp(mem))
-        return;
-
-    auto sreg1 = drreg_reservation{drcontext, ilist, where};
-    auto sreg2 = drreg_reservation{drcontext, ilist, where};
-    auto reg_taint = drreg_reservation{drcontext, ilist, where};
-
-    // save address of mem to reg_taint
-    // also duplicate it to sreg1
-    drutil_insert_get_mem_addr(drcontext, ilist, where, mem, reg_taint, sreg1);
-    MINSERT(ilist, where,
-            INSTR_CREATE_mov(drcontext,
-                             opnd_create_reg(sreg1),
-                             opnd_create_reg(reg_taint)));
-
-    // load [mem] taint value to reg_taint
-    drtaint_insert_app_to_taint(drcontext, ilist, where, reg_taint, sreg2);
-    sreg2.unreserve();
-
-    MINSERT(ilist, where,
-            XINST_CREATE_load(drcontext, // ldr reg_taint, [reg_taint]
-                              opnd_create_reg(reg_taint),
-                              OPND_CREATE_MEM32(reg_taint, 0)));
-
-    // combine taint of [mem]
-    MINSERT(ilist, where,
-            INSTR_CREATE_orr(drcontext,
-                             opnd_create_reg(reg_result),
-                             opnd_create_reg(reg_result),
-                             opnd_create_reg(reg_taint)));
-
-    // load [mem + 4] taint value to reg_taint
-    MINSERT(ilist, where,
-            XINST_CREATE_add_2src(drcontext,
-                                  opnd_create_reg(reg_taint),
-                                  opnd_create_reg(sreg1),
-                                  OPND_CREATE_INT(4)));
-
-    drtaint_insert_app_to_taint(drcontext, ilist, where, reg_taint, sreg1);
-    sreg1.unreserve();
-
-    MINSERT(ilist, where,
-            XINST_CREATE_load(drcontext, // ldr reg_taint, [reg_taint]
-                              opnd_create_reg(reg_taint),
-                              OPND_CREATE_MEM32(reg_taint, 0)));
-
-    // combine taint of [mem + 4]
-    MINSERT(ilist, where,
-            INSTR_CREATE_orr(drcontext,
-                             opnd_create_reg(reg_result),
-                             opnd_create_reg(reg_result),
-                             opnd_create_reg(reg_taint)));
-}
-
-static void
-insert_check_mem_ldr_tainted(void *drcontext, instrlist_t *ilist,
-                             instr_t *where, reg_id_t reg_result)
-
-{
-    opnd_t mem = instr_get_src(where, 0);
-    if (!opnd_is_base_disp(mem))
-        return;
-
-    int opcode = instr_get_opcode(where);
-    auto reg_taint = drreg_reservation{drcontext, ilist, where};
-
-    if (instr_group_is_ldrb(opcode))
-        insert_save_app_taint_to_reg<BYTE>(drcontext, ilist, where, mem, reg_taint);
-
-    else if (instr_group_is_ldrh(opcode))
-        insert_save_app_taint_to_reg<HALF>(drcontext, ilist, where, mem, reg_taint);
-
-    else if (instr_group_is_ldr(opcode))
-        insert_save_app_taint_to_reg<WORD>(drcontext, ilist, where, mem, reg_taint);
-
-    else
-    {
-        instr_disassemble(drcontext, where, STDOUT);
-        dr_printf("\n");
-        DR_ASSERT(false);
-    }
-
-    MINSERT(ilist, where,
-            INSTR_CREATE_orr(drcontext,
-                             opnd_create_reg(reg_result),
-                             opnd_create_reg(reg_result),
-                             opnd_create_reg(reg_taint)));
-}
-
-static void
-insert_check_mem_ldm_tainted(void *drcontext, instrlist_t *ilist, instr_t *where)
-{
-    // Not implemented now
-}
-
-static void
-insert_check_mem_tainted(void *drcontext, instrlist_t *ilist, instr_t *where,
-                         reg_id_t reg_result)
-
-{
-    int opcode = instr_get_opcode(where);
-    if (instr_group_is_ldm(opcode))
-        insert_check_mem_ldm_tainted(drcontext, ilist, where);
-
-    else if (instr_group_is_ldrd(opcode))
-        insert_check_mem_ldrd_tainted(drcontext, ilist, where, reg_result);
-
-    else
-        insert_check_mem_ldr_tainted(drcontext, ilist, where, reg_result);
-}
-
-static bool
-instr_reg_in_dsts(instr_t *where)
-{
-    int n = instr_num_dsts(where);
-    for (int i = 0; i < n; i++)
-    {
-        opnd_t opnd = instr_get_dst(where, i);
-        if (opnd_is_reg(opnd))
-            return true;
-    }
-
-    return false;
-}
-
-static void
-insert_handle_tainted_srcs(void *drcontext, instrlist_t *ilist,
-                           instr_t *where, reg_id_t reg_result)
-{
-    if (instr_reads_memory(where))
-    {
-        if (!instr_reg_in_dsts(where))
-            return;
-
-        insert_check_mem_tainted(drcontext, ilist, where, reg_result);
-        return;
-    }
-
-    int n = instr_num_srcs(where);
-    for (int i = 0; i < n; i++)
-    {
-        opnd_t opnd = instr_get_src(where, i);
-        if (opnd_is_reg(opnd))
-        {
-            insert_check_reg_tainted(drcontext, ilist, where,
-                                     opnd_get_reg(opnd), reg_result);
-        }
-    }
-}
-
-static void
-insert_zero_result(void *drcontext, instrlist_t *ilist,
-                   instr_t *where, reg_id_t reg_result)
-{
-    auto pred = disabled_autopredication(ilist);
-
-    MINSERT(ilist, where,
-            XINST_CREATE_move(drcontext, // mov reg_result, 0
-                              opnd_create_reg(reg_result),
-                              OPND_CREATE_INT(0)));
-}
-
-static void
-insert_clean_call_if_result_tainted(void *drcontext, instrlist_t *ilist,
-                                    instr_t *where, reg_id_t reg_result)
-{
-    auto pred = disabled_autopredication(ilist);
-    auto reg_flags = drreg_reservation{drcontext, ilist, where};
-
-    instr_t *skip = INSTR_CREATE_label(drcontext);
-    dr_save_arith_flags_to_reg(drcontext, ilist, where, reg_flags);
-
-    MINSERT(ilist, where,
-            XINST_CREATE_cmp(drcontext, opnd_create_reg(reg_result), OPND_CREATE_INT(0)));
-
-    MINSERT(ilist, where,
-            XINST_CREATE_jump_cond(drcontext, DR_PRED_EQ, opnd_create_instr(skip)));
-
-    dr_insert_clean_call(drcontext, ilist, where, (void *)clean_call_cb,
-                         false, 1, OPND_CREATE_INTPTR(instr_get_app_pc(where)));
-
-    MINSERT(ilist, where, skip);
-    dr_restore_arith_flags_from_reg(drcontext, ilist, where, reg_flags);
-}
-
-static void
-perform_instrumentation(void *drcontext, instrlist_t *ilist, instr_t *where)
-{
-    // reserve register indicating that instr is tainted
-    // set value to 0 (not tainted)
-    auto reg_result = drreg_reservation{drcontext, ilist, where};
-    insert_zero_result(drcontext, ilist, where, reg_result);
-
-    // walk instr operands, check they are tainted
-    // place final result to reg_result
-    insert_handle_tainted_srcs(drcontext, ilist, where, reg_result);
-
-    // if instr is tainted, then insert clean call to save info
-    insert_clean_call_if_result_tainted(drcontext, ilist, where, reg_result);
-}
-
-#pragma endregion handle_tainted
-
-#pragma region main_and_events
 
 static dr_emit_flags_t
 event_bb(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
@@ -410,13 +201,11 @@ event_bb(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
 
     per_thread_t *tls = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
     app_pc pc = instr_get_app_pc(where);
-    auto it = tls->tainted_instrs->find(pc);
+    auto it = tls->instrs->find(pc);
 
     // do not add instrumentation to known tainted instructions
-    if (it == tls->tainted_instrs->end())
-        perform_instrumentation(drcontext, ilist, where);
-    else
-        it->second.hit_count++;
+    if (it == tls->instrs->end())
+        tc_perform_instrumentation(drcontext, ilist, where);
 
     return DR_EMIT_DEFAULT;
 }
@@ -458,12 +247,14 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     disassemble_set_syntax(DR_DISASM_ARM);
     dr_register_exit_event(exit_event);
 
-    dr_printf("\n----- drtaint marker is running -----\n\n");
-
     module_data_t *exe = dr_get_main_module();
     DR_ASSERT(exe != NULL);
     dr_printf("Start address: 0x%08X\n\n", exe->start);
     dr_free_module_data(exe);
+
+    tc_set_callback(save_taint_info);
+
+    dr_printf("\n----- drtaint marker is running -----\n\n");
 }
 
 static void
@@ -488,7 +279,14 @@ event_thread_init(void *drcontext)
     per_thread_t *data = (per_thread_t *)dr_thread_alloc(drcontext, sizeof(per_thread_t));
     memset(data, 0, sizeof(per_thread_t));
 
-    data->tainted_instrs = new taint_info_t();
+    std::stringstream stream;
+    stream << std::hex << dr_get_process_id() << "."
+           << std::hex << dr_get_thread_id(drcontext) << ".json";
+
+    data->fd_instrs = dr_open_file(stream.str().c_str(), DR_FILE_WRITE_OVERWRITE);
+    dr_write_file(data->fd_instrs, "[", 1);
+    data->instrs = new std::set<app_pc>();
+
     drmgr_set_tls_field(drcontext, tls_index, data);
 }
 
@@ -496,47 +294,12 @@ static void
 event_thread_exit(void *drcontext)
 {
     per_thread_t *data = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
-    dump_tainted_instrs(drcontext, *(data->tainted_instrs));
 
-    delete data->tainted_instrs;
+    delete data->instrs;
+    dr_write_file(data->fd_instrs, "]", 1);
+    dr_close_file(data->fd_instrs);
     dr_thread_free(drcontext, data, sizeof(per_thread_t));
 }
-
-static void
-dump_tainted_instrs(void *drcontext, const taint_info_t &info_map)
-{
-    dr_printf("\n\n---------------------------------\n");
-    for (const auto &elem : info_map)
-    {
-        app_pc address = elem.first;
-        auto tainted_instr = elem.second;
-        //auto instr = tainted_instr_decode(drcontext, tainted_instr);
-
-        auto instr = instr_decoded(drcontext, address);
-
-        //auto str = tainted_instr_bytes_str(tainted_instr);
-        //dr_printf("%08lx\t%s\n", address, str.c_str());
-
-        dr_printf("%08lx\t", address);
-        int length = instr_length(drcontext, instr);
-
-        if (length == 2)
-        {
-            dr_printf("%04hX\n", *(uint16_t*)instr_get_raw_bits(instr));
-        }
-        else
-        {
-            dr_printf("%08lX\n", *(uint32_t*)instr_get_raw_bits(instr));
-        }
-
-        //instr_disassemble(drcontext, instr, STDOUT);
-        //dr_printf("\n");
-    }
-}
-
-#pragma endregion main_and_events
-
-#pragma region syscalls
 
 static bool
 event_filter_syscall(void *drcontext, int sysnum)
@@ -609,5 +372,3 @@ event_post_syscall(void *drcontext, int sysnum)
         }
     }
 }
-
-#pragma endregion syscalls

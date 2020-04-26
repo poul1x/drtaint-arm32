@@ -158,6 +158,23 @@ void tainted_instr_save_tainted_opnds(void *drcontext, instr_t *where, tainted_i
     }
 }
 
+void tainted_instr_save_bytes_addr(void *drcontext, instr_t *instr, tainted_instr *tnt_instr)
+{
+    int length = instr_length(drcontext, instr);
+    tnt_instr->pc = instr_get_app_pc(instr);
+
+    if (length == 2)
+    {
+        tnt_instr->bytes.sz = u_integer::sz2_bytes;
+        tnt_instr->bytes.u16 = bswap_16(*(uint16_t *)instr_get_raw_bits(instr));
+    }
+    else
+    {
+        tnt_instr->bytes.sz = u_integer::sz4_bytes;
+        tnt_instr->bytes.u32 = bswap_32(*(uint32_t *)instr_get_raw_bits(instr));
+    }
+}
+
 std::string tainted_opnd_name_str(const tainted_opnd &opnd)
 {
     return opnd.type == tainted_opnd::reg
@@ -182,50 +199,16 @@ std::string tainted_opnd_taint_str(const tainted_opnd &opnd)
     return u_integer_hex_str(opnd.taint);
 }
 
-void tainted_instr_save_bytes(void *drcontext, instr_t *instr, tainted_instr *tnt_instr)
-{
-    tnt_instr->pc = instr_get_raw_bits(instr);
-    return;
-
-    int length = instr_length(drcontext, instr);
-
-    if (length == 2)
-    {
-        tnt_instr->bytes.sz = u_integer::sz2_bytes;
-        tnt_instr->bytes.u16 = bswap_16(*(uint16_t *)instr_get_raw_bits(instr));
-    }
-    else
-    {
-        tnt_instr->bytes.sz = u_integer::sz4_bytes;
-        tnt_instr->bytes.u32 = bswap_32(*(uint32_t *)instr_get_raw_bits(instr));
-    }
-}
-
-instr_decoded tainted_instr_decode(void *drcontext, const tainted_instr &instr)
-{
-    app_pc bytes = (app_pc)instr.bytes.u32;
-    return instr_decoded(drcontext, instr.pc);
-
-    if (instr.bytes.sz == u_integer::sz4_bytes)
-    {
-        uint32_t bytes = instr.bytes.u32; //bswap_32(instr.bytes.u32);
-        return instr_decoded(drcontext, (app_pc)&bytes);
-    }
-    else
-    {
-        uint16_t bytes = instr.bytes.u16; //bswap_32(instr.bytes.u16);
-        return instr_decoded(drcontext, (app_pc)&bytes);
-    }
-}
-
-std::string tainted_instr_hit_count_str(const tainted_instr &instr)
-{
-    return std::to_string(instr.hit_count);
-}
-
 std::string tainted_instr_bytes_str(const tainted_instr &instr)
 {
     return u_integer_hex_str(instr.bytes);
+}
+
+std::string tainted_instr_addr_str(const tainted_instr &instr)
+{
+        char buf[8];
+        dr_snprintf(buf, sizeof(buf), "%08lX", instr.pc);
+        return std::string(buf, sizeof(buf));
 }
 
 std::string u_integer_hex_str(const u_integer &itgr)
@@ -233,21 +216,21 @@ std::string u_integer_hex_str(const u_integer &itgr)
     if (itgr.sz == u_integer::sz1_byte)
     {
         char buf[2];
-        dr_snprintf(buf, sizeof(buf), "%02hhX", itgr.u8);
+        dr_snprintf(buf, sizeof(buf), "%02X", itgr.u8);
         return std::string(buf, sizeof(buf));
     }
 
-    if (itgr.sz == u_integer::sz2_bytes)
+    else if (itgr.sz == u_integer::sz2_bytes)
     {
         char buf[4];
-        dr_snprintf(buf, sizeof(buf), "%04hX", itgr.u16);
+        dr_snprintf(buf, sizeof(buf), "%04X", itgr.u16);
         return std::string(buf, sizeof(buf));
     }
 
     else
     {
         char buf[8];
-        dr_snprintf(buf, sizeof(buf), "%08lX", itgr.u32);
+        dr_snprintf(buf, sizeof(buf), "%08X", itgr.u32);
         return std::string(buf, sizeof(buf));
     }
 }
