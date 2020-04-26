@@ -23,24 +23,24 @@ struct buffer_t
     int len;
 };
 
-static int tls_index;
+// Output modules info to file
+file_t g_fd_modules = 0;
+app_pc g_base_addr = 0;
 
 struct per_thread_t
 {
-    /*
-    * We will store there buffer
-    * that will be saved in pre_syscall event
-    */
+    // We will store there buffer
+    // that will be saved in pre_syscall event
     buffer_t syscall_buf;
 
-    /*
-    * We will store there addresses of tainted instructions
-    */
+    // We will store there addresses of tainted instructions
     std::set<app_pc> *instrs;
 
-    file_t fd_modules;
+    // Output taint info to file
     file_t fd_instrs;
 };
+
+static int tls_index;
 
 #pragma region prototypes
 
@@ -68,6 +68,9 @@ dump_tainted_instrs(void *drcontext, file_t file,
 
 static void
 save_taint_info(void *drcontext, instr_t *instr);
+
+static void
+event_module_load(void *drcontext, const module_data_t *info, bool loaded);
 
 #pragma endregion prototypes
 
@@ -247,30 +250,46 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     disassemble_set_syntax(DR_DISASM_ARM);
     dr_register_exit_event(exit_event);
 
-    module_data_t *exe = dr_get_main_module();
-    DR_ASSERT(exe != NULL);
-    dr_printf("Start address: 0x%08X\n\n", exe->start);
-    dr_free_module_data(exe);
+    // Save main module info
+    module_data_t *info = dr_get_main_module();
+    g_base_addr = info->start;
 
+    JsonObject dict_main('{', '}');
+    dict_main.append("address", u32_to_hex_string((uint32_t)g_base_addr));
+    dict_main.append("name", dr_module_preferred_name(info));
+    dict_main.append("filepath", info->full_path);
+    dr_free_module_data(info);
+
+    g_fd_modules = dr_open_file("modules.json", DR_FILE_WRITE_OVERWRITE);
+    std::string json = dict_main.dump();
+    dr_write_file(g_fd_modules, "[", 1);
+    dr_write_file(g_fd_modules, json.c_str(), json.length());
+
+    // Add taint check and module load handlers
+    drmgr_register_module_load_event(event_module_load);
     tc_set_callback(save_taint_info);
 
     dr_printf("\n----- drtaint marker is running -----\n\n");
 }
 
 static void
-exit_event(void)
+exit_event()
 {
-    drmgr_unregister_tls_field(tls_index);
+    dr_printf("\n----- drtaint marker is exitting -----\n\n");
+
+    drmgr_unregister_module_load_event(event_module_load);
     drmgr_unregister_thread_init_event(event_thread_init);
     drmgr_unregister_thread_exit_event(event_thread_exit);
     drmgr_unregister_pre_syscall_event(event_pre_syscall);
     drmgr_unregister_post_syscall_event(event_post_syscall);
+    drmgr_unregister_tls_field(tls_index);
 
     drreg_exit();
     drmgr_exit();
     drtaint_exit();
 
-    dr_printf("\n----- drtaint marker is exitting -----\n\n");
+    dr_write_file(g_fd_modules, "]", 1);
+    dr_close_file(g_fd_modules);
 }
 
 static void
@@ -279,11 +298,10 @@ event_thread_init(void *drcontext)
     per_thread_t *data = (per_thread_t *)dr_thread_alloc(drcontext, sizeof(per_thread_t));
     memset(data, 0, sizeof(per_thread_t));
 
-    std::stringstream stream;
-    stream << std::hex << dr_get_process_id() << "."
-           << std::hex << dr_get_thread_id(drcontext) << ".json";
+    std::string tid_str = u32_to_hex_string(dr_get_thread_id(drcontext));
+    std::string filename = "instructions." + tid_str + ".json";
 
-    data->fd_instrs = dr_open_file(stream.str().c_str(), DR_FILE_WRITE_OVERWRITE);
+    data->fd_instrs = dr_open_file(filename.c_str(), DR_FILE_WRITE_OVERWRITE);
     dr_write_file(data->fd_instrs, "[", 1);
     data->instrs = new std::set<app_pc>();
 
@@ -371,4 +389,24 @@ event_post_syscall(void *drcontext, int sysnum)
             tls->syscall_buf.len = 0;
         }
     }
+}
+
+static void
+event_module_load(void *drcontext, const module_data_t *info, bool loaded)
+{
+    (void)drcontext;
+
+    if (!loaded)
+        return;
+
+    if (info->start == g_base_addr)
+        return;
+
+    JsonObject dict_main('{', '}', true);
+    dict_main.append("address", u32_to_hex_string((uint32_t)info->start));
+    dict_main.append("name", dr_module_preferred_name(info));
+    dict_main.append("filepath", info->full_path);
+
+    std::string json = dict_main.dump();
+    dr_write_file(g_fd_modules, json.c_str(), json.length());
 }

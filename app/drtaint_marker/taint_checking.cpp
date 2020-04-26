@@ -1,5 +1,4 @@
 #include "taint_checking.h"
-//#include "drtaint_shadow.h"
 #include "drtaint.h"
 #include "drtaint_template_utils.h"
 #include "drtaint_instr_groups.h"

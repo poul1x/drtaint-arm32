@@ -66,4 +66,10 @@ std::string tainted_instr_addr_str(const tainted_instr &instr);
 
 std::string u_integer_hex_str(const u_integer &itgr);
 
+std::string u8_to_hex_string(uint8_t num);
+
+std::string u16_to_hex_string(uint16_t num);
+
+std::string u32_to_hex_string(uint32_t num);
+
 #endif

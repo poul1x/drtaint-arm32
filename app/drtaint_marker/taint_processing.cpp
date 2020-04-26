@@ -207,30 +207,39 @@ std::string tainted_instr_bytes_str(const tainted_instr &instr)
 std::string tainted_instr_addr_str(const tainted_instr &instr)
 {
         char buf[8];
-        dr_snprintf(buf, sizeof(buf), "%08lX", instr.pc);
+        dr_snprintf(buf, sizeof(buf), "%08X", instr.pc);
         return std::string(buf, sizeof(buf));
 }
 
 std::string u_integer_hex_str(const u_integer &itgr)
 {
     if (itgr.sz == u_integer::sz1_byte)
-    {
-        char buf[2];
-        dr_snprintf(buf, sizeof(buf), "%02X", itgr.u8);
-        return std::string(buf, sizeof(buf));
-    }
+        return u8_to_hex_string(itgr.u8);
 
     else if (itgr.sz == u_integer::sz2_bytes)
-    {
-        char buf[4];
-        dr_snprintf(buf, sizeof(buf), "%04X", itgr.u16);
-        return std::string(buf, sizeof(buf));
-    }
+        return u16_to_hex_string(itgr.u16);
 
     else
-    {
-        char buf[8];
-        dr_snprintf(buf, sizeof(buf), "%08X", itgr.u32);
-        return std::string(buf, sizeof(buf));
-    }
+        return u32_to_hex_string(itgr.u32);
+}
+
+std::string u8_to_hex_string(uint8_t num)
+{
+    char buf[2];
+    dr_snprintf(buf, sizeof(buf), "%02X", num);
+    return std::string(buf, sizeof(buf));
+}
+
+std::string u16_to_hex_string(uint16_t num)
+{
+    char buf[4];
+    dr_snprintf(buf, sizeof(buf), "%04X", num);
+    return std::string(buf, sizeof(buf));
+}
+
+std::string u32_to_hex_string(uint32_t num)
+{
+    char buf[8];
+    dr_snprintf(buf, sizeof(buf), "%08X", num);
+    return std::string(buf, sizeof(buf));
 }
