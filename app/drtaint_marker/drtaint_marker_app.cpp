@@ -1,14 +1,32 @@
-#include <unistd.h> 
-#include <stdio.h>
+#include <cstdio>
+#include <unistd.h>
+using namespace std;
 
-int main(int argc, char **argv)
+#define NUM_THREADS 5
+
+#ifdef WINDOWS
+# define EXPORT __declspec(dllexport)
+#else
+# define EXPORT
+#endif
+
+/* repeatme should be re-executed 5 times with arg 1-5 */
+extern "C" void
+target(const char* buf)
 {
-    char buf[20] = {0};
-    printf("Enter string: ");
-    ssize_t n = read(0, buf, sizeof(buf));
-    
-    for (int i =0; i<n; i++)
-        buf[i] ^= 5;
+    if (buf[0] == 'A')
+        printf("Guessed A!\n");
+    else if (buf[0] == 'B')
+        printf("Guessed B!\n");
+    else
+        printf("Guess failed!\n");
+}
 
-    printf("\nEcho: %s\n", buf);
+int
+main(int argc, char **argv)
+{
+    char buf[] = "qwerty";
+    target(buf);
+    printf("done\n");
+    return 0;
 }

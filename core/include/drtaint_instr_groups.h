@@ -93,4 +93,16 @@ inline bool instr_group_is_strd(int opcode)
            opcode == OP_strexd;
 }
 
+inline bool instr_group_is_jump(int opcode)
+{
+    return opcode == OP_b || opcode == OP_b_short ||
+           (opcode >= OP_bl && opcode <= OP_cbz);
+}
+
+inline bool instr_group_is_cmp(int opcode)
+{
+    return opcode == OP_cmp || opcode == OP_cmn ||
+           opcode == OP_teq || opcode == OP_tst;
+}
+
 #endif

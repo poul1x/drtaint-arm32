@@ -2,9 +2,10 @@ cmake_minimum_required (VERSION 3.0)
 project (drtaint_marker)
 
 add_library(drtaint_marker SHARED
-drtaint_marker_cli.cpp
+drtaint_marker_cli.c
 taint_processing.cpp
 taint_checking.cpp
+communication.cpp
 ../../core/drtaint.cpp
 ../../core/drtaint_simd.cpp
 ../../core/drtaint_shadow.c
@@ -19,9 +20,10 @@ configure_DynamoRIO_client(drtaint_marker)
 use_DynamoRIO_extension(drtaint_marker "drx")
 use_DynamoRIO_extension(drtaint_marker "drreg")
 use_DynamoRIO_extension(drtaint_marker "drmgr")
-use_DynamoRIO_extension(drtaint_marker "umbra")
 use_DynamoRIO_extension(drtaint_marker "drutil")
+use_DynamoRIO_extension(drtaint_marker "umbra")
 use_DynamoRIO_extension(drtaint_marker "drsyscall")
+use_DynamoRIO_extension(drtaint_marker "drfuzz")
 
 # configuration for client app
 set(CMAKE_C_FLAGS "${CMAKE_FLAGS_APP}")
