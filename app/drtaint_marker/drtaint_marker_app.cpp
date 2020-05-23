@@ -10,7 +10,7 @@ using namespace std;
 #define EXPORT
 #endif
 
-int somefunc(const char *buf)
+bool somefunc(const char *buf, size_t *pos)
 {
     char tag[] = "<head>";
     bool res = true;
@@ -19,6 +19,7 @@ int somefunc(const char *buf)
     {
         if (buf[i] != tag[i])
         {
+            *pos = i;
             res = false;
             break;
         }
@@ -29,20 +30,26 @@ int somefunc(const char *buf)
 
 /* repeatme should be re-executed 5 times with arg 1-5 */
 extern "C" int
-target(const char *buf, int len)
+target(const char *buf)
 {
-    printf("len = 0x%08X\n", len);
-    if (somefunc(buf) == false)
-        return -1;
-    else
+    size_t pos = -1;
+    bool res = somefunc(buf, &pos);
+    if (res == true)
+    {
+        printf("Target success!\n");
         return 1;
+    }
+    else
+    {
+        printf("Target failed: %d\n", pos);
+        return -1;
+    }
 }
 
 int main(int argc, char **argv)
 {
     char buf[] = "aaaaaaa";
-    int x = sizeof(buf);
-    target(buf, x);
+    target(buf);
     printf("done\n");
     return 0;
 }

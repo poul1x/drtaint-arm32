@@ -137,7 +137,7 @@ bool cmn_send_next_tc_request(char *buf, uint32_t buf_sz)
 
     std::string resp = response.body;
     std::size_t resp_len = resp.length();
-    // dr_printf("response = %s\n", resp.c_str());
+    dr_printf("TC response = %s\n", resp.c_str());
 
     if (resp_len != buf_sz)
     {

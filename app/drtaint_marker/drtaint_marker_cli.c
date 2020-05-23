@@ -40,7 +40,7 @@ exit_event(void);
 
 int g_init = false;
 char *g_target_buf = NULL;
-uint32_t g_target_buf_len = 5;
+uint32_t g_target_buf_len = 7;
 
 static void reset_taint(char *buf, uint32_t len)
 {
@@ -202,7 +202,7 @@ pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
     }
 }
 
-int i = 2;
+int i = 30;
 
 static bool
 post_fuzz_cb(void *fuzzcxt, generic_func_t target_pc)
