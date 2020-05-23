@@ -8,24 +8,24 @@
 
 #include "taint_checking.h"
 
-#define TAG_TAINTED 0x02
-#define TARGET_FUNCTION "target"
-#define MAX_LEN 4
+#include "communication.h"
+#include "taint_map.h"
+#include <string.h>
 
-// struct per_thread_t
-// {
-//     int a;
-// };
+#define TARGET_FUNCTION "target"
+
+struct user_data_t
+{
+    uint32_t num_arg_buf;
+    uint32_t num_arg_len;
+
+    char *target_buf;
+    uint32_t target_buf_length;
+};
 
 // static int tls_index;
 
 #pragma region prototypes
-
-extern int
-cmn_send_load_request(dr_mcontext_t *mc, ptr_uint_t buffer_addr, ptr_uint_t target_addr);
-
-extern int
-cmn_send_solve_request(app_pc cmp_addr, uint32_t taint, const char *buf_concrete);
 
 static void
 exit_event(void);
@@ -38,11 +38,18 @@ exit_event(void);
 
 #pragma endregion prototypes
 
-static void reset_taint(app_pc buf)
+int g_init = false;
+char *g_target_buf = NULL;
+uint32_t g_target_buf_len = 5;
+
+static void reset_taint(char *buf, uint32_t len)
 {
-    void* drcontext = dr_get_current_drcontext();
-    for (int i = 0; i<10; i++)
-        drtaint_set_app_taint(drcontext, &buf[i], i + 2);
+    void *drcontext = dr_get_current_drcontext();
+    for (int i = 0; i < len; i++)
+    {
+        int j = (i % 255) + 1;
+        drtaint_set_app_taint(drcontext, (byte *)&buf[i], j);
+    }
 
     drtaint_set_reg_taint(drcontext, DR_REG_R0, 0);
     drtaint_set_reg_taint(drcontext, DR_REG_R1, 0);
@@ -65,7 +72,35 @@ static void reset_taint(app_pc buf)
 static void
 on_tainted_cmp(void *drcontext, instr_t *instr)
 {
-    dr_printf("On tainted cmp\n");
+    uint32_t taint;
+    int cnt = instr_num_srcs(instr);
+    // dr_printf("instr pc = %p\n", instr_get_app_pc(instr));
+    // dr_printf("cnt instr = %d\n", cnt);
+
+    if (cnt == 1)
+    {
+        opnd_t opnd = instr_get_src(instr, 0);
+        drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
+    }
+    else // must be 2
+    {
+        opnd_t opnd = instr_get_src(instr, 0);
+        drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
+
+        if (taint == 0)
+        {
+            opnd = instr_get_src(instr, 1);
+            drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
+            DR_ASSERT(taint != 0);
+        }
+    }
+
+    if (!tmap_has(instr, taint))
+    {
+        app_pc pc = instr_get_app_pc(instr);
+        cmn_send_solve_request(g_target_buf, g_target_buf_len, taint, 0, pc);
+        tmap_emplace(instr, taint);
+    }
 }
 
 inline static bool
@@ -85,42 +120,94 @@ event_bb(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
     if (!instr_is_cmp(instr_get_opcode(where)))
         return DR_EMIT_DEFAULT;
 
-    // per_thread_t *tls = (per_thread_t *)drmgr_get_tls_field(drcontext, tls_index);
-    // app_pc pc = instr_get_app_pc(where);
-    // auto it = tls->instrs->find(pc);
-
-    // do not add instrumentation to known tainted instructions
-    // if (it == tls->instrs->end())
     tc_perform_instrumentation(drcontext, ilist, where);
-
-    // dr_printf("Here\n");
     return DR_EMIT_DEFAULT;
 }
 
-int g_init = false;
-int g_init_success = false;
+static app_pc
+get_start_address()
+{
+    module_data_t *app;
+    app_pc addr;
+
+    app = dr_get_main_module();
+    DR_ASSERT(app != NULL);
+
+    addr = app->start;
+    dr_free_module_data(app);
+    return addr;
+}
+
+static app_pc
+get_libc_address()
+{
+    app_pc addr = 0;
+
+    dr_module_iterator_t *mi = dr_module_iterator_start();
+    while (dr_module_iterator_hasnext(mi))
+    {
+        module_data_t *mod = dr_module_iterator_next(mi);
+        const char *name = dr_module_preferred_name(mod);
+
+        if (strncmp(name, "libc", 4))
+            addr = mod->start;
+
+        dr_free_module_data(mod);
+
+        if (addr != 0)
+            break;
+    }
+    dr_module_iterator_stop(mi);
+
+    return addr;
+}
 
 static void
 pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
 {
-    app_pc buf;
-    drmf_status_t status;
-
-    status = drfuzz_get_arg(fuzzcxt, target_pc, 0, false, (void **)&buf);
-    DR_ASSERT(status == DRMF_SUCCESS);
-
-    reset_taint(buf);
-    if (g_init == false)
+    if (g_init == true)
     {
-        g_init_success = cmn_send_load_request(
-            mc, (ptr_uint_t)target_pc, (ptr_uint_t)buf);
+        bool res = false;
+        res = cmn_send_next_tc_request(g_target_buf, g_target_buf_len);
+
+        if (!res)
+        {
+            dr_printf("Waiting for testcase");
+            dr_sleep(2000);
+            dr_printf("\rWaiting for testcase.");
+            dr_sleep(2000);
+            dr_printf("\rWaiting for testcase..");
+            dr_sleep(2000);
+            dr_printf("\rWaiting for testcase...\n");
+            dr_sleep(2000);
+        }
+
+        reset_taint(g_target_buf, g_target_buf_len);
+    }
+    else
+    {
+        char *buf;
+        drmf_status_t status;
+        dr_printf("Loading binary\n");
+
+        status = drfuzz_get_arg(fuzzcxt, target_pc, 0, false, (void **)&buf);
+        DR_ASSERT(status == DRMF_SUCCESS);
+        g_target_buf = buf;
+
+        app_pc load_pc = get_start_address();
+        app_pc libc_pc = get_libc_address();
+        g_init = cmn_send_load_request(
+            mc, (ptr_uint_t)load_pc, (ptr_uint_t)libc_pc,
+            (ptr_uint_t)target_pc, g_target_buf_len);
     }
 }
+
+int i = 2;
 
 static bool
 post_fuzz_cb(void *fuzzcxt, generic_func_t target_pc)
 {
-    return false;
+    return --i > 0;
 }
 
 static generic_func_t
@@ -178,12 +265,11 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     DR_ASSERT(status == DRMF_SUCCESS);
 
     generic_func_t target = get_target_address();
-    status = drfuzz_fuzz_target(target, 1, 0, DRWRAP_CALLCONV_DEFAULT,
+    status = drfuzz_fuzz_target(target, 2, 0, DRWRAP_CALLCONV_DEFAULT,
                                 pre_fuzz_cb, post_fuzz_cb);
 
-    dr_printf("Address = %p\n", target);
-
     DR_ASSERT(status == DRMF_SUCCESS);
+    dr_printf("\ntarget = %p\n", target);
     dr_printf("\n----- drtaint fuzzer is running -----\n\n");
 }
 
@@ -201,8 +287,6 @@ exit_event()
     drmgr_exit();
     drtaint_exit();
 }
-
-volatile int t = 0;
 
 // static void
 // event_thread_init(void *drcontext)
