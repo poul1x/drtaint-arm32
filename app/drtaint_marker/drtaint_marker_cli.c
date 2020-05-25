@@ -38,9 +38,64 @@ exit_event(void);
 
 #pragma endregion prototypes
 
+#define MAX_MUTATION_CNT 10000
+#define NO_TESTCASES_CNT 10
+
 int g_init = false;
 char *g_target_buf = NULL;
-uint32_t g_target_buf_len = 7;
+uint32_t g_target_buf_len = 28;
+uint32_t g_num_mutations = 0;
+uint32_t g_num_no_testcases = 0;
+uint32_t g_num_crahes = 1;
+static drfuzz_mutator_t *mutator = NULL;
+
+static void
+fault_event(void *fuzzcxt, drfuzz_fault_t *fault, drfuzz_fault_ex_t *fault_ex)
+{
+    drfuzz_target_frame_t *target_frame;
+    drfuzz_target_iterator_t *iter = drfuzz_target_iterator_start(fuzzcxt);
+
+    char filename[30] = {0};
+    dr_snprintf(filename, sizeof(filename), "crash_%08x.bin", g_num_crahes++);
+    file_t f = dr_open_file(filename, DR_FILE_WRITE_OVERWRITE);
+
+    dr_fprintf(f, "Trace:\n");
+    while ((target_frame = drfuzz_target_iterator_next(iter)) != NULL)
+    {
+        uint32_t i;
+        dr_fprintf(f, "Function: %08X; Args: ",
+                   (ptr_uint_t)target_frame->func_pc);
+
+        for (i = 0; i < target_frame->arg_count; i++)
+        {
+            dr_fprintf(f, PIFX, target_frame->arg_values[i]);
+            if (i < (target_frame->arg_count - 1))
+                dr_fprintf(f, ", ");
+        }
+        dr_fprintf(f, "\n");
+    }
+    drfuzz_target_iterator_stop(iter);
+
+    dr_fprintf(f, "\nContext:\n");
+    dr_mcontext_t* mc = fault_ex->mcontext;
+    dr_fprintf(f, "r0\t0x%08x\n", mc->r0);
+    dr_fprintf(f, "r1\t0x%08x\n", mc->r1);
+    dr_fprintf(f, "r2\t0x%08x\n", mc->r2);
+    dr_fprintf(f, "r3\t0x%08x\n", mc->r3);
+    dr_fprintf(f, "r4\t0x%08x\n", mc->r4);
+    dr_fprintf(f, "r5\t0x%08x\n", mc->r5);
+    dr_fprintf(f, "r6\t0x%08x\n", mc->r6);
+    dr_fprintf(f, "r7\t0x%08x\n", mc->r7);
+    dr_fprintf(f, "r8\t0x%08x\n", mc->r8);
+    dr_fprintf(f, "r9\t0x%08x\n", mc->r9);
+    dr_fprintf(f, "r10\t0x%08x\n", mc->r10);
+    dr_fprintf(f, "r11\t0x%08x\n", mc->r11);
+    dr_fprintf(f, "r12\t0x%08x\n", mc->r12);
+    dr_fprintf(f, "pc\t0x%08x\n", mc->pc);
+    dr_fprintf(f, "sp\t0x%08x\n", mc->sp);
+    dr_fprintf(f, "lr\t0x%08x\n", mc->lr);
+    dr_close_file(f);
+}
 
 static void reset_taint(char *buf, uint32_t len)
 {
@@ -74,8 +129,6 @@ on_tainted_cmp(void *drcontext, instr_t *instr)
 {
     uint32_t taint;
     int cnt = instr_num_srcs(instr);
-    // dr_printf("instr pc = %p\n", instr_get_app_pc(instr));
-    // dr_printf("cnt instr = %d\n", cnt);
 
     if (cnt == 1)
     {
@@ -163,23 +216,53 @@ get_libc_address()
 }
 
 static void
+setup_mutator(drfuzz_mutator_t **mut, char *seed, uint32_t size)
+{
+    const char *argv[] = {"-alg", "random", "-unit", "bits", "-flags", "1"};
+    int argc = sizeof(argv) / sizeof(argv[0]);
+
+    if (*mut != NULL)
+    {
+        drfuzz_mutator_stop(*mut);
+        *mut = NULL;
+    }
+
+    drmf_status_t status = drfuzz_mutator_start(mut, seed, size, argc, argv);
+    DR_ASSERT(status == DRMF_SUCCESS);
+}
+
+static void
 pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
 {
     if (g_init == true)
     {
-        bool res = false;
-        res = cmn_send_next_tc_request(g_target_buf, g_target_buf_len);
-
-        if (!res)
+        drmf_status_t status;
+        if (g_num_mutations == 0)
         {
-            dr_printf("Waiting for testcase");
-            dr_sleep(2000);
-            dr_printf("\rWaiting for testcase.");
-            dr_sleep(2000);
-            dr_printf("\rWaiting for testcase..");
-            dr_sleep(2000);
-            dr_printf("\rWaiting for testcase...\n");
-            dr_sleep(2000);
+            bool res = cmn_send_next_tc_request(g_target_buf, g_target_buf_len);
+            dr_printf("End of fuzzing cycle\n");
+
+            if (res == true)
+            {
+                g_num_no_testcases = 0;
+                setup_mutator(&mutator, g_target_buf, g_target_buf_len);
+                dr_printf("Got new testcase! Begin new cycle\n");
+            }
+            else
+            {
+                dr_printf("No more testcases. Continue with previous one\n");
+                g_num_mutations = MAX_MUTATION_CNT;
+                g_num_no_testcases++;
+
+                status = drfuzz_mutator_get_next_value(mutator, g_target_buf);
+                DR_ASSERT(status == DRMF_SUCCESS);
+            }
+        }
+        else
+        {
+            g_num_mutations--;
+            status = drfuzz_mutator_get_next_value(mutator, g_target_buf);
+            DR_ASSERT(status == DRMF_SUCCESS);
         }
 
         reset_taint(g_target_buf, g_target_buf_len);
@@ -199,15 +282,16 @@ pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
         g_init = cmn_send_load_request(
             mc, (ptr_uint_t)load_pc, (ptr_uint_t)libc_pc,
             (ptr_uint_t)target_pc, g_target_buf_len);
+
+        g_num_no_testcases = 0;
+        setup_mutator(&mutator, g_target_buf, g_target_buf_len);
     }
 }
-
-int i = 30;
 
 static bool
 post_fuzz_cb(void *fuzzcxt, generic_func_t target_pc)
 {
-    return --i > 0;
+    return g_init == true && g_num_no_testcases < NO_TESTCASES_CNT;
 }
 
 static generic_func_t
@@ -267,8 +351,11 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     generic_func_t target = get_target_address();
     status = drfuzz_fuzz_target(target, 2, 0, DRWRAP_CALLCONV_DEFAULT,
                                 pre_fuzz_cb, post_fuzz_cb);
-
     DR_ASSERT(status == DRMF_SUCCESS);
+
+    status = drfuzz_register_fault_event(fault_event);
+    DR_ASSERT(status == DRMF_SUCCESS);
+
     dr_printf("\ntarget = %p\n", target);
     dr_printf("\n----- drtaint fuzzer is running -----\n\n");
 }
@@ -282,6 +369,14 @@ exit_event()
     // drmgr_unregister_thread_exit_event(event_thread_exit);
     // drmgr_unregister_tls_field(tls_index);
 
+    dr_sleep(1000);
+    if (mutator != NULL)
+    {
+        drfuzz_mutator_stop(mutator);
+        mutator = NULL;
+    }
+
+    drfuzz_unregister_fault_event(fault_event);
     drfuzz_exit();
     drreg_exit();
     drmgr_exit();
