@@ -1,7 +1,9 @@
 drtaint
 ===
 
-This project is an attempt to improve the drtaint: https://github.com/toshipiazza/drtaint. 
+**disable ASLR!**
+
+This project is an attempt to improve the drtaint: https://github.com/toshipiazza/drtaint.
 It's still raw, with some bug fixes and new features added.
 
 ## Build (Cross compilation on linux host)
@@ -25,7 +27,7 @@ make
 
 ## Launch
 
-**Note:** *host* = Linux machine (I've used Ubuntu 18 x32 and WSL), *guest* = Linux on ARM board (I've tested on *BeagleBone Black* and *qemu*). 
+**Note:** *host* = Linux machine (I've used Ubuntu 18 x32 and WSL), *guest* = Linux on ARM board (I've tested on *BeagleBone Black* and *qemu*).
 
 Assume, you have a board and ssh access to your Linux guest. If not, look at this [manual](/qemu).
 
@@ -58,7 +60,7 @@ export BUILD=~/build
 # Launch self-test
 $BIN32/drrun -c $BUILD/libdrtaint_test.so -- $BUILD/drtaint_test_app --all
 
-# Expected output: 
+# Expected output:
 # Results: passed - 33, failed - 8
 # Exitting...
 ```

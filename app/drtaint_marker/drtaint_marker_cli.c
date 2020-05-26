@@ -46,7 +46,6 @@ char *g_target_buf = NULL;
 uint32_t g_target_buf_len = 28;
 uint32_t g_num_mutations = 0;
 uint32_t g_num_no_testcases = 0;
-uint32_t g_num_crahes = 1;
 static drfuzz_mutator_t *mutator = NULL;
 
 static void
@@ -56,7 +55,7 @@ fault_event(void *fuzzcxt, drfuzz_fault_t *fault, drfuzz_fault_ex_t *fault_ex)
     drfuzz_target_iterator_t *iter = drfuzz_target_iterator_start(fuzzcxt);
 
     char filename[30] = {0};
-    dr_snprintf(filename, sizeof(filename), "crash_%08x.bin", g_num_crahes++);
+    dr_snprintf(filename, sizeof(filename), "crash.bin");
     file_t f = dr_open_file(filename, DR_FILE_WRITE_OVERWRITE);
 
     dr_fprintf(f, "Trace:\n");
@@ -356,6 +355,8 @@ dr_client_main(client_id_t id, int argc, const char *argv[])
     status = drfuzz_register_fault_event(fault_event);
     DR_ASSERT(status == DRMF_SUCCESS);
 
+    tmap_load();
+
     dr_printf("\ntarget = %p\n", target);
     dr_printf("\n----- drtaint fuzzer is running -----\n\n");
 }
@@ -369,6 +370,7 @@ exit_event()
     // drmgr_unregister_thread_exit_event(event_thread_exit);
     // drmgr_unregister_tls_field(tls_index);
 
+    tmap_dump();
     dr_sleep(1000);
     if (mutator != NULL)
     {

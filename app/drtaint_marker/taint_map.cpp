@@ -1,9 +1,16 @@
 #include "taint_map.h"
+#include "nlohmann/json.hpp"
+#include <fstream>
 #include <algorithm>
 #include <vector>
 #include <map>
 
-using taint_map = std::map<app_pc, std::vector<uint32_t>>;
+#define FILENAME "tmap.json"
+
+using json = nlohmann::json;
+using tvec_t = std::vector<uint32_t>;
+using taint_map = std::map<app_pc, tvec_t>;
+
 taint_map tmap;
 
 bool tmap_has(instr_t *instr, uint32_t taint)
@@ -34,7 +41,7 @@ void tmap_emplace(instr_t *instr, uint32_t taint)
     }
     else
     {
-        std::vector<uint32_t> tvec{taint};
+        tvec_t tvec{taint};
         tmap.emplace(pc, tvec);
     }
 }
@@ -53,4 +60,41 @@ void tmap_print()
             dr_printf(" 0x%08X", taint);
     }
     dr_printf("\n");
+}
+
+void tmap_dump()
+{
+    json j_tmap;
+    for (const auto &elem : tmap)
+    {
+        json j_instr;
+        j_instr["address"] = (uint32_t)elem.first;
+        j_instr["taint"] = elem.second;
+        j_tmap.push_back(j_instr);
+    }
+
+    std::ofstream out(FILENAME, std::ios::out | std::ios::trunc);
+    out << j_tmap << std::endl;
+}
+
+void tmap_load()
+{
+    json j_tmap;
+
+    std::ifstream in(FILENAME);
+
+    if (!in.is_open())
+        return;
+
+    in >> j_tmap;
+
+    for (const auto &j_instr : j_tmap)
+    {
+        app_pc pc = (app_pc)j_instr["address"].get<uint32_t>();
+        tvec_t tvec = j_instr["taint"].get<tvec_t>();
+
+        tmap.emplace(pc, tvec);
+    }
+
+    tmap_print();
 }

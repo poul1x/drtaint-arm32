@@ -15,6 +15,10 @@ extern "C"
 
     void tmap_print();
 
+    void tmap_dump();
+
+    void tmap_load();
+
 #ifdef __cplusplus
 }
 #endif
