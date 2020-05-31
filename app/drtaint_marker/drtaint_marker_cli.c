@@ -38,12 +38,13 @@ exit_event(void);
 
 #pragma endregion prototypes
 
-#define MAX_MUTATION_CNT 10000
+// #define MAX_MUTATION_CNT 10000
+#define MAX_MUTATION_CNT 1
 #define NO_TESTCASES_CNT 10
 
 int g_init = false;
 char *g_target_buf = NULL;
-uint32_t g_target_buf_len = 28;
+uint32_t g_target_buf_len = 7;
 uint32_t g_num_mutations = 0;
 uint32_t g_num_no_testcases = 0;
 static drfuzz_mutator_t *mutator = NULL;
@@ -76,7 +77,7 @@ fault_event(void *fuzzcxt, drfuzz_fault_t *fault, drfuzz_fault_ex_t *fault_ex)
     drfuzz_target_iterator_stop(iter);
 
     dr_fprintf(f, "\nContext:\n");
-    dr_mcontext_t* mc = fault_ex->mcontext;
+    dr_mcontext_t *mc = fault_ex->mcontext;
     dr_fprintf(f, "r0\t0x%08x\n", mc->r0);
     dr_fprintf(f, "r1\t0x%08x\n", mc->r1);
     dr_fprintf(f, "r2\t0x%08x\n", mc->r2);
@@ -93,6 +94,12 @@ fault_event(void *fuzzcxt, drfuzz_fault_t *fault, drfuzz_fault_ex_t *fault_ex)
     dr_fprintf(f, "pc\t0x%08x\n", mc->pc);
     dr_fprintf(f, "sp\t0x%08x\n", mc->sp);
     dr_fprintf(f, "lr\t0x%08x\n", mc->lr);
+
+    dr_fprintf(f, "\nInput:\n");
+    for (uint32_t i = 0; i < g_target_buf_len; i++)
+        dr_fprintf(f, "%02X", g_target_buf[i]);
+
+    dr_fprintf(f, "\n");
     dr_close_file(f);
 }
 
@@ -127,39 +134,134 @@ static void
 on_tainted_cmp(void *drcontext, instr_t *instr)
 {
     uint32_t taint;
-    int cnt = instr_num_srcs(instr);
+    opnd_t opnd;
+    int opcode = instr_get_opcode(instr);
 
-    if (cnt == 1)
-    {
-        opnd_t opnd = instr_get_src(instr, 0);
-        drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
-    }
-    else // must be 2
-    {
-        opnd_t opnd = instr_get_src(instr, 0);
-        drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
+    // instr_disassemble(drcontext, instr, STDOUT);
+    // dr_printf("tainted instr -- \n");
 
-        if (taint == 0)
+    switch (opcode)
+    {
+    // General cmp
+    case OP_cmp:
+    case OP_cmn:
+    case OP_teq:
+    case OP_tst:
+
+        if (instr_num_srcs(instr) == 1)
         {
-            opnd = instr_get_src(instr, 1);
+            opnd = instr_get_src(instr, 0);
             drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
-            DR_ASSERT(taint != 0);
         }
+        else // must be 2
+        {
+            opnd = instr_get_src(instr, 0);
+            drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
+
+            if (taint == 0)
+            {
+                opnd = instr_get_src(instr, 1);
+                drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
+            }
+        }
+        break;
+
+    // Compare and jump
+    case OP_cbz:
+    case OP_cbnz:
+
+        opnd = instr_get_src(instr, 1);
+        drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
+        break;
+
+    // Affect flags
+    case OP_adcs:
+    case OP_adds:
+    case OP_ands:
+    case OP_asrs:
+    case OP_bics:
+    case OP_eors:
+    case OP_lsls:
+    case OP_lsrs:
+    case OP_mlas:
+    case OP_movs:
+    case OP_muls:
+    case OP_mvns:
+    case OP_orrs:
+    case OP_orns:
+    case OP_rors:
+    case OP_rrxs:
+    case OP_rsbs:
+    case OP_rscs:
+    case OP_smlals:
+    case OP_smulls:
+    case OP_subs:
+    case OP_umlals:
+    case OP_umulls:
+
+        // dr_printf("dsts = %d\n", instr_num_dsts(instr));
+        opnd = instr_get_dst(instr, 0);
+        drtaint_get_reg_taint(drcontext, opnd_get_reg(opnd), &taint);
+        break;
     }
 
+    DR_ASSERT(taint != 0);
     if (!tmap_has(instr, taint))
     {
-        app_pc pc = instr_get_app_pc(instr);
+        uint32_t pc = (uint32_t)instr_get_app_pc(instr);
+        dr_isa_mode_t mode = dr_get_isa_mode(drcontext);
+
+        if (mode == DR_ISA_ARM_THUMB)
+            pc += 1;
+
         cmn_send_solve_request(g_target_buf, g_target_buf_len, taint, 0, pc);
         tmap_emplace(instr, taint);
     }
 }
 
 inline static bool
-instr_is_cmp(int opcode)
+instr_affects_flags(int opcode)
 {
-    return opcode == OP_cmp || opcode == OP_cmn ||
-           opcode == OP_teq || opcode == OP_tst;
+    switch (opcode)
+    {
+    // General cmp
+    case OP_cmp:
+    case OP_cmn:
+    case OP_teq:
+    case OP_tst:
+
+    // Compare and jump
+    case OP_cbz:
+    case OP_cbnz:
+
+    // Affect flags
+    case OP_adcs:
+    case OP_adds:
+    case OP_ands:
+    case OP_asrs:
+    case OP_bics:
+    case OP_eors:
+    case OP_lsls:
+    case OP_lsrs:
+    case OP_mlas:
+    case OP_movs:
+    case OP_muls:
+    case OP_mvns:
+    case OP_orrs:
+    case OP_orns:
+    case OP_rors:
+    case OP_rrxs:
+    case OP_rsbs:
+    case OP_rscs:
+    case OP_smlals:
+    case OP_smulls:
+    case OP_subs:
+    case OP_umlals:
+    case OP_umulls:
+        return true;
+    }
+
+    return false;
 }
 
 static dr_emit_flags_t
@@ -169,49 +271,11 @@ event_bb(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
     if (!instr_is_app(where))
         return DR_EMIT_DEFAULT;
 
-    if (!instr_is_cmp(instr_get_opcode(where)))
+    if (!instr_affects_flags(instr_get_opcode(where)))
         return DR_EMIT_DEFAULT;
 
     tc_perform_instrumentation(drcontext, ilist, where);
     return DR_EMIT_DEFAULT;
-}
-
-static app_pc
-get_start_address()
-{
-    module_data_t *app;
-    app_pc addr;
-
-    app = dr_get_main_module();
-    DR_ASSERT(app != NULL);
-
-    addr = app->start;
-    dr_free_module_data(app);
-    return addr;
-}
-
-static app_pc
-get_libc_address()
-{
-    app_pc addr = 0;
-
-    dr_module_iterator_t *mi = dr_module_iterator_start();
-    while (dr_module_iterator_hasnext(mi))
-    {
-        module_data_t *mod = dr_module_iterator_next(mi);
-        const char *name = dr_module_preferred_name(mod);
-
-        if (strncmp(name, "libc", 4))
-            addr = mod->start;
-
-        dr_free_module_data(mod);
-
-        if (addr != 0)
-            break;
-    }
-    dr_module_iterator_stop(mi);
-
-    return addr;
 }
 
 static void
@@ -253,12 +317,14 @@ pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
                 g_num_mutations = MAX_MUTATION_CNT;
                 g_num_no_testcases++;
 
+                dr_sleep(5000);
                 status = drfuzz_mutator_get_next_value(mutator, g_target_buf);
                 DR_ASSERT(status == DRMF_SUCCESS);
             }
         }
         else
         {
+            dr_sleep(3000);
             g_num_mutations--;
             status = drfuzz_mutator_get_next_value(mutator, g_target_buf);
             DR_ASSERT(status == DRMF_SUCCESS);
@@ -276,11 +342,14 @@ pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
         DR_ASSERT(status == DRMF_SUCCESS);
         g_target_buf = buf;
 
-        app_pc load_pc = get_start_address();
-        app_pc libc_pc = get_libc_address();
+        dr_isa_mode_t mode = dr_get_isa_mode(drfuzz_get_drcontext(fuzzcxt));
+        ptr_uint_t target_pc_ = (ptr_uint_t)target_pc;
+
+        if (mode == DR_ISA_ARM_THUMB)
+            target_pc_ += 1;
+
         g_init = cmn_send_load_request(
-            mc, (ptr_uint_t)load_pc, (ptr_uint_t)libc_pc,
-            (ptr_uint_t)target_pc, g_target_buf_len);
+            mc, target_pc_, g_target_buf_len);
 
         g_num_no_testcases = 0;
         setup_mutator(&mutator, g_target_buf, g_target_buf_len);

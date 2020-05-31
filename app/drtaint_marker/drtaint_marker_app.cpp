@@ -1,5 +1,6 @@
 #include <cstdio>
 #include <unistd.h>
+#include <string.h>
 using namespace std;
 
 #define NUM_THREADS 5
@@ -10,45 +11,82 @@ using namespace std;
 #define EXPORT
 #endif
 
-bool somefunc(const int *buf, size_t *pos)
+bool own_strcmp(const char *dst, const char *src)
 {
-    int tag[] = {0x11111111, 0x22222222, 0x3333, 0x4444, 0x55, 0x66, 0};
-    bool res = true;
+    const char* p_dst = dst;
+    const char* p_src = src;
 
-    for (size_t i = 0; i < sizeof(tag) / sizeof(int); i++)
+    while (*p_dst && *p_src && *p_dst == *p_src)
     {
-        if (buf[i] != tag[i])
-        {
-            *pos = i;
-            res = false;
-            break;
-        }
+        p_src++;
+        p_dst++;
     }
 
-    return res;
+    return *p_src == '\0' && *p_dst == '\0';
 }
+
+bool own_memcmp(const char *dst, const char *src, int len)
+{
+    for (int i = 0; i < len; i += 4)
+    {
+        if (*(int *)&dst[i] != *(int *)&src[i])
+            return false;
+    }
+
+    int cnt_left = len % 4;
+    for (int i = 0; i < cnt_left; i++)
+    {
+        if (dst[i] != src[i])
+            return false;
+    }
+
+    return true;
+}
+
+
+// isalnum
+// isalpha
+// isascii
+// isctrl
+// isdigit
+// isgraph
+// islower
+// isprint
+// ispunct
+// isspace
+// isupper
+// isxdigit
+// memcmp, memicmp
+// strcmp
+
+// stricmp, stricmpi, _fstricmp
+// strlen, _fstrlen
+// strncmp, strnicmp, strncmpi
+// strncpy, _fstrncpy
+// strstr, _fstrstr
+
+// strrchr, _fstrrchr
+// strchr, _fstrchr
 
 /* repeatme should be re-executed 5 times with arg 1-5 */
 extern "C" int
-target(const int *buf)
+target(const char *buf)
 {
-    size_t pos = -1;
-    bool res = somefunc(buf, &pos);
-    if (res == true)
+    if (!strcmp(buf, "<head>"))
     {
         printf("Target success!\n");
-        return *(int*)0;
+        return *(int *)0;
     }
     else
     {
-        // printf("Target failed: %d\n", pos);
+        printf("Target failed\n");
         return -1;
     }
 }
 
 int main(int argc, char **argv)
 {
-    int buf[] = {0xAA,0xAA,0xAA,0xAA,0xAA,0xAA,0xAA};
+    char buf[] = "AAAAAAA";
     target(buf);
     printf("done\n");
     return 0;

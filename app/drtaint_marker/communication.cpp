@@ -2,7 +2,8 @@
 #include "taint_processing.h"
 #include "http/picohttpclient.hpp"
 
-#define SOLVER_URL "http://192.168.1.34:8080"
+// #define SOLVER_URL "http://192.168.1.34:8080"
+#define SOLVER_URL "http://192.168.59.1:8080"
 
 #include <cctype>
 #include <iomanip>
@@ -38,14 +39,32 @@ url_encode(std::string value)
     return escaped.str();
 }
 
-bool cmn_send_load_request(dr_mcontext_t *mc, ptr_uint_t load_addr, ptr_uint_t libc_addr,
-                           ptr_uint_t target_addr, uint32_t tc_length)
+static void
+append_request_with_shared_objects(std::ostringstream &request)
+{
+    dr_module_iterator_t *mi = dr_module_iterator_start();
+    while (dr_module_iterator_hasnext(mi))
+    {
+        module_data_t *mod = dr_module_iterator_next(mi);
+        const char *name = dr_module_preferred_name(mod);
+
+        if (name != NULL)
+        {
+            app_pc addr = mod->start;
+            request << "&base." << url_encode(name) << "="
+                    << u32_to_hex_string((uint32_t)addr);
+        }
+
+        dr_free_module_data(mod);
+    }
+    dr_module_iterator_stop(mi);
+}
+
+bool cmn_send_load_request(dr_mcontext_t *mc, ptr_uint_t target_addr, uint32_t tc_length)
 {
     std::ostringstream request;
     request << SOLVER_URL << "/load"
-            << "?load_addr=" << u32_to_hex_string(load_addr)
-            << "&libc_addr=" << u32_to_hex_string(load_addr)
-            << "&target_addr=" << u32_to_hex_string(target_addr)
+            << "?target_addr=" << u32_to_hex_string(target_addr)
             << "&tc_length=" << u32_to_hex_string(tc_length)
             << "&ctx.r0=" << u32_to_hex_string(mc->r0)
             << "&ctx.r1=" << u32_to_hex_string(mc->r1)
@@ -63,6 +82,8 @@ bool cmn_send_load_request(dr_mcontext_t *mc, ptr_uint_t load_addr, ptr_uint_t l
             << "&ctx.sp=" << u32_to_hex_string(mc->sp)
             << "&ctx.lr=" << u32_to_hex_string(mc->lr)
             << "&ctx.flags=" << u32_to_hex_string(mc->xflags);
+
+    append_request_with_shared_objects(request);
 
     HTTPResponse response = HTTPClient::request(HTTPClient::POST, URI(request.str()));
     if (!response.success)
@@ -83,7 +104,7 @@ bool cmn_send_load_request(dr_mcontext_t *mc, ptr_uint_t load_addr, ptr_uint_t l
 }
 
 bool cmn_send_solve_request(const char *buf, uint32_t buf_len,
-                            uint32_t taint, uint32_t taint_offs, app_pc cmp_addr)
+                            uint32_t taint, uint32_t taint_offs, uint32_t cmp_addr)
 {
     std::ostringstream request;
     request << SOLVER_URL << "/solver"
@@ -91,7 +112,7 @@ bool cmn_send_solve_request(const char *buf, uint32_t buf_len,
             << "&buf_addr=" << u32_to_hex_string((uint32_t)buf)
             << "&taint=" << u32_to_hex_string(taint)
             << "&taint_offs=" << u32_to_hex_string(taint_offs)
-            << "&cmp_addr=" << u32_to_hex_string((uint32_t)cmp_addr);
+            << "&cmp_addr=" << u32_to_hex_string(cmp_addr);
 
     HTTPResponse response = HTTPClient::request(HTTPClient::POST, URI(request.str()));
     if (!response.success)
