@@ -182,24 +182,9 @@ void propagate_ldr(void *drcontext, instrlist_t *ilist, instr_t *where)
                                                 opnd_create_reg(sapp2),
                                                 opnd_mem<sz>(sapp2, 0)));
 
-        // determine if need to propagate 3rd policy
-        bool need_3p = false;
-        if (opnd_num_regs_used(mem2) == 2)
-        {
-            // it may be 2-byte thumb instruction or 4-byte ARM
-            if (instr_length(drcontext, where) == 2)
-                need_3p = true;
-            else
-            {
-                uint raw_bits = instr_get_raw_word(where, 0);
-                if (opnd_num_regs_used(mem2) == 2 && ldr_is_pre_or_offs_addr(raw_bits))
-                    need_3p = true;
-            }
-        }
-
         // propagate 3rd policy: ldr r0, [r1, r2].
         // If r2 is tainted then r0 is tainted too
-        if (need_3p)
+        if (opnd_num_regs_used(mem2) == 2)
         {
             reg_id_t reg_ind = opnd_get_index(mem2);
             auto sreg_ind = drreg_reservation{drcontext, ilist, where};
@@ -290,10 +275,10 @@ propagate_ldrd(void *drcontext, instrlist_t *ilist, instr_t *where)
 template <opnd_sz_t sz>
 void propagate_str(void *drcontext, instrlist_t *ilist, instr_t *where)
 /*
- *    str reg1, [mem2]  
+ *    str reg1, [mem2]
  *
- *    We need to save the tag value stored in 
- *    shadow register of reg1 to shadow address of [mem2] 
+ *    We need to save the tag value stored in
+ *    shadow register of reg1 to shadow address of [mem2]
  */
 {
     opnd_t mem2 = instr_get_dst(where, 0);
@@ -323,10 +308,10 @@ void propagate_str(void *drcontext, instrlist_t *ilist, instr_t *where)
 static void
 propagate_strd(void *drcontext, instrlist_t *ilist, instr_t *where)
 /*
- *    strd reg1, reg2, [mem2]  
+ *    strd reg1, reg2, [mem2]
  *
- *    We need to save the tag values stored in 
- *    shadow registers of reg2 and reg3 to shadow addresses of [mem2] and [mem2 + 4] 
+ *    We need to save the tag values stored in
+ *    shadow registers of reg2 and reg3 to shadow addresses of [mem2] and [mem2 + 4]
  */
 {
     opnd_t mem2 = instr_get_dst(where, 0);
@@ -385,7 +370,7 @@ propagate_mov_regs(void *drcontext, instrlist_t *ilist, instr_t *where,
 /*
  *    mov reg2, reg1
  *
- *    Need to save the tag value of reg1's 
+ *    Need to save the tag value of reg1's
  *    shadow register to reg2's shadow register
  */
 {
@@ -454,8 +439,8 @@ propagate_arith_reg_reg(void *drcontext, instrlist_t *ilist, instr_t *where)
  *    sub reg3, reg2, reg1
  *    ...
  *
- *    Need to mark reg3 tainted. 
- *    Because its value depends on values of reg2, reg1, 
+ *    Need to mark reg3 tainted.
+ *    Because its value depends on values of reg2, reg1,
  *    we use OR to combine their impacts to reg3
  */
 {
@@ -490,11 +475,11 @@ propagate_arith_reg_reg(void *drcontext, instrlist_t *ilist, instr_t *where)
 
 static void
 propagate_1rd_3rs(void *drcontext, instrlist_t *ilist, instr_t *where)
-/* 
- *    mla reg4, reg3, reg2, reg1 
+/*
+ *    mla reg4, reg3, reg2, reg1
  *
- *    Need to mark reg4 tainted. 
- *    Because its value depends on values of reg3, reg2, reg1, 
+ *    Need to mark reg4 tainted.
+ *    Because its value depends on values of reg3, reg2, reg1,
  *    we use OR to combine their impacts to reg4
  */
 {
@@ -541,11 +526,11 @@ propagate_1rd_3rs(void *drcontext, instrlist_t *ilist, instr_t *where)
 
 static void
 propagate_mull(void *drcontext, instrlist_t *ilist, instr_t *where)
-/* 
- *    umull reg4, reg3, reg2, reg1 
+/*
+ *    umull reg4, reg3, reg2, reg1
  *
- *    Need to mark reg3 and reg4 tainted. 
- *    Because their values depend on values of reg2, reg1, 
+ *    Need to mark reg3 and reg4 tainted.
+ *    Because their values depend on values of reg2, reg1,
  *    we use OR to combine their impacts to reg3 and reg4
  */
 {
@@ -591,14 +576,14 @@ propagate_mull(void *drcontext, instrlist_t *ilist, instr_t *where)
 
 static void
 propagate_smlal(void *drcontext, instrlist_t *ilist, instr_t *where)
-/* 
- *    smlal rdlo, rdhi, reg1, reg2 
+/*
+ *    smlal rdlo, rdhi, reg1, reg2
  *
- *    rdlo, rdhi - source and destination registers 
+ *    rdlo, rdhi - source and destination registers
  *
- *    Need to mark rdlo and rdhi tainted. 
+ *    Need to mark rdlo and rdhi tainted.
  *    Because their values depend on values of reg2, reg1
- *    we use OR to combine their impacts to rdlo and rdhi    
+ *    we use OR to combine their impacts to rdlo and rdhi
  */
 {
     reg_id_t reg1 = opnd_get_reg(instr_get_src(where, 2));
@@ -675,7 +660,7 @@ propagate_pkhXX(void *drcontext, instrlist_t *ilist,
  *    pkhbt r0, r1, r2
  *    pkhtb r0, r1, r2
  *
- *    Need to mark r0 tainted. 
+ *    Need to mark r0 tainted.
  *    r0's tag value depends on 0:15, 16:31 bits of r1, r2
  */
 {
@@ -847,8 +832,8 @@ template <stack_dir_t c>
 void propagate_stm_cc_template(app_pc pc, void *base, bool writeback)
 /*
  *    stm r, { regs }
- *    
- *    When handling a stm command we have to set all memory 
+ *
+ *    When handling a stm command we have to set all memory
  *    in the stack, where the register values will be written, tainted
  */
 {
@@ -928,7 +913,7 @@ propagate_mov_imm_src(void *drcontext, instrlist_t *ilist, instr_t *where)
 /*
  *    mov reg2, imm1
  *
- *    Saves the value of 0 to the shadow register 
+ *    Saves the value of 0 to the shadow register
  *    of reg2 because moving constant to reg2 untaints reg2
  */
 {
@@ -1076,7 +1061,7 @@ propagate_load_store(void *drcontext, instrlist_t *ilist, instr_t *where)
 
         else
             DR_ASSERT(false);
-        
+
         return true;
     }
 
@@ -1096,7 +1081,7 @@ propagate_load_store(void *drcontext, instrlist_t *ilist, instr_t *where)
 
         else
             DR_ASSERT(false);
-        
+
         return true;
     }
 
@@ -1393,7 +1378,7 @@ propagate_default_isa(void *drcontext, instrlist_t *ilist, instr_t *where, void 
 static bool
 drsys_iter_cb(drsys_arg_t *arg, void *drcontext)
 /*
- *   Set syscall output parameters untainted 
+ *   Set syscall output parameters untainted
  */
 {
     if (!arg->valid)

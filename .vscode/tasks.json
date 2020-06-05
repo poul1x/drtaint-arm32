@@ -6,7 +6,7 @@
         {
             "label": "Make",
             "type": "shell",
-            "command": "./scripts/make.sh && ./scripts/transfer.sh build build",
+            "command": "./scripts/make.sh && ./scripts/move.sh && ./scripts/transfer.sh build build",
             "group": {
                 "kind": "build",
                 "isDefault": true

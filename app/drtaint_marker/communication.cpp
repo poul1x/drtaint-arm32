@@ -1,5 +1,6 @@
 #include "communication.h"
 #include "taint_processing.h"
+#include "mrc_map.h"
 #include "http/picohttpclient.hpp"
 
 // #define SOLVER_URL "http://192.168.1.34:8080"
@@ -60,6 +61,27 @@ append_request_with_shared_objects(std::ostringstream &request)
     dr_module_iterator_stop(mi);
 }
 
+static void
+append_request_with_mrc_info_iter(const mrc* item, void* user_data)
+{
+    // dr_printf("pc=%08x\nreg=%s\nval=%08x\n",item->pc, item->reg, item->value);
+    std::vector<mrc>* vec = (std::vector<mrc>*)user_data;
+    vec->push_back(*item);
+}
+
+static void
+append_request_with_mrc_info(std::ostringstream& request) {
+
+    std::vector<mrc> vec;
+    mrc_iterate_elements(append_request_with_mrc_info_iter, (void*)&vec);
+
+    for (const auto& item: vec)
+    {
+        request << "&mrc." << u32_to_hex_string((uint32_t)item.pc)
+        << "." << item.reg << "=" << u32_to_hex_string(item.value);
+    }
+}
+
 bool cmn_send_load_request(dr_mcontext_t *mc, ptr_uint_t target_addr, uint32_t tc_length)
 {
     std::ostringstream request;
@@ -113,6 +135,9 @@ bool cmn_send_solve_request(const char *buf, uint32_t buf_len,
             << "&taint=" << u32_to_hex_string(taint)
             << "&taint_offs=" << u32_to_hex_string(taint_offs)
             << "&cmp_addr=" << u32_to_hex_string(cmp_addr);
+
+    append_request_with_mrc_info(request);
+    mrc_clear();
 
     HTTPResponse response = HTTPClient::request(HTTPClient::POST, URI(request.str()));
     if (!response.success)

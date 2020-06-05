@@ -6,6 +6,7 @@ drtaint_marker_cli.c
 taint_processing.cpp
 taint_checking.cpp
 taint_map.cpp
+mrc_map.cpp
 communication.cpp
 ../../core/drtaint.cpp
 ../../core/drtaint_simd.cpp

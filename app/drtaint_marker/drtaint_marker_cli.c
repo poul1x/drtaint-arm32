@@ -10,6 +10,7 @@
 
 #include "communication.h"
 #include "taint_map.h"
+// #include "mrc_map.h"
 #include <string.h>
 
 #define TARGET_FUNCTION "target"
@@ -44,7 +45,7 @@ exit_event(void);
 
 int g_init = false;
 char *g_target_buf = NULL;
-uint32_t g_target_buf_len = 7;
+uint32_t g_target_buf_len = 64;
 uint32_t g_num_mutations = 0;
 uint32_t g_num_no_testcases = 0;
 static drfuzz_mutator_t *mutator = NULL;
@@ -271,6 +272,12 @@ event_bb(void *drcontext, void *tag, instrlist_t *ilist, instr_t *where,
     if (!instr_is_app(where))
         return DR_EMIT_DEFAULT;
 
+    // if (mrc_reads_coproc(where))
+    // {
+    //     mrc_insert_save_arm_reg(drcontext, ilist, where);
+    //     return DR_EMIT_DEFAULT;
+    // }
+
     if (!instr_affects_flags(instr_get_opcode(where)))
         return DR_EMIT_DEFAULT;
 
@@ -338,6 +345,7 @@ pre_fuzz_cb(void *fuzzcxt, generic_func_t target_pc, dr_mcontext_t *mc)
         drmf_status_t status;
         dr_printf("Loading binary\n");
 
+        // mrc_clear();
         status = drfuzz_get_arg(fuzzcxt, target_pc, 0, false, (void **)&buf);
         DR_ASSERT(status == DRMF_SUCCESS);
         g_target_buf = buf;
