@@ -3,6 +3,8 @@ project (drtaint_marker)
 
 add_library(drtaint_marker SHARED
 drtaint_marker_cli.cpp
+taint_processing.cpp
+taint_checking.cpp
 ../../core/drtaint.cpp
 ../../core/drtaint_simd.cpp
 ../../core/drtaint_shadow.c
@@ -14,11 +16,11 @@ set(CMAKE_C_FLAGS "${CMAKE_FLAGS_CLI}")
 set(CMAKE_CXX_FLAGS "${CMAKE_FLAGS_CLI}")
 
 configure_DynamoRIO_client(drtaint_marker)
+use_DynamoRIO_extension(drtaint_marker "drx")
 use_DynamoRIO_extension(drtaint_marker "drreg")
 use_DynamoRIO_extension(drtaint_marker "drmgr")
-use_DynamoRIO_extension(drtaint_marker "drutil")
-use_DynamoRIO_extension(drtaint_marker "drx")
 use_DynamoRIO_extension(drtaint_marker "umbra")
+use_DynamoRIO_extension(drtaint_marker "drutil")
 use_DynamoRIO_extension(drtaint_marker "drsyscall")
 
 # configuration for client app

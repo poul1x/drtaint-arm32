@@ -1,9 +1,6 @@
 cmake_minimum_required (VERSION 3.0)
 project (drtaint)
 
-# cmake ../ -DDynamoRIO_DIR=/home/user/Downloads/dynamorio/build/cmake/ -DDrMemoryFramework_DIR=/home/user/Downloads/drmemory/build/drmf/ -DCMAKE_TOOLCHAIN_FILE=toolchain-arm32.cmake
-# cmake ../ -DDynamoRIO_DIR=/home/debian/Downloads/dynamorio/build/cmake/ -DDrMemoryFramework_DIR=/home/debian/Downloads/drmemory/build/drmf/ -DDebug=ON
-
 if (NOT DEFINED DynamoRIO_DIR)
   message(FATAL_ERROR "Need to specify directory DynamoRIO_DIR containing DynamoRIOConfig.cmake")
 endif ()
@@ -15,7 +12,9 @@ endif ()
 find_package(DynamoRIO REQUIRED)
 find_package(DrMemoryFramework REQUIRED)
 
-# compile client libraries in thumb mode, otherwise it crashes after
+include_directories("core/include")
+
+# compile client libraries in thumb mode, otherwise it wil crash
 set(CMAKE_FLAGS_CLI "-mthumb -Wall -Wno-unknown-pragmas -O3")
 
 # by default compile client app in arm/thumb2 mode

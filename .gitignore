@@ -1,5 +1,10 @@
-build/*
 .vscode/*
+build/*
+qemu/*
 scripts/*
-qemu/boot/*
-qemu/*.qcow2
+!qemu/launch_deb.sh
+!qemu/install_deb.sh
+!qemu/README
+compile_commands.json
+compile_commands.txt
+.clang-format
