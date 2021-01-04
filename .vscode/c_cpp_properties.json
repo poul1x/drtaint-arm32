@@ -3,14 +3,14 @@
         {
             "name": "Linux",
             "includePath": [
-                "${workspaceFolder}/*",
-                "${workspaceFolder}/../dynamorio/*",
-                "${workspaceFolder}../dynamorio/drmemory/*"
+                "${workspaceFolder}/**"
             ],
             "defines": [],
-            "cStandard": "c11",
-            "cppStandard": "c++17",
-            "intelliSenseMode": "clang-x64"
+            "compilerPath": "/usr/bin/arm-linux-gnueabihf-g++",
+            "cStandard": "gnu17",
+            "cppStandard": "gnu++14",
+            "intelliSenseMode": "gcc-arm",
+            "compileCommands": "${workspaceFolder}/compile_commands.json"
         }
     ],
     "version": 4

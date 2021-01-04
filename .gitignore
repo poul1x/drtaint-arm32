@@ -3,3 +3,5 @@ qemu/*
 !qemu/launch_deb.sh
 !qemu/install_deb.sh
 !qemu/README
+compile_commands.json
+compile_commands.txt

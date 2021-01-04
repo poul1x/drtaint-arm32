@@ -13,6 +13,9 @@
         "string_view": "cpp",
         "dr_defines.h": "c",
         "list": "cpp",
-        "cstring": "cpp"
-    }
+        "cstring": "cpp",
+        "iosfwd": "cpp",
+        "sstream": "cpp"
+    },
+    "C_Cpp.errorSquiggles": "Disabled"
 }
